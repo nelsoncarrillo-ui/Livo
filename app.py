@@ -34,6 +34,51 @@ def save_settings(data):
     with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
+# ── CTR model for traffic estimation ────────────────────────────────────────
+_CTR = {1:.2748,2:.1509,3:.1095,4:.0765,5:.0574,6:.0432,7:.0328,8:.0240,9:.0181,10:.0151}
+
+def ctr(pos):
+    if not pos: return 0.0
+    if pos <= 10: return _CTR.get(pos, 0.005)
+    return 0.005 if pos <= 20 else 0.001
+
+def compute_import_kpis(import_id, conn):
+    rows = conn.execute(
+        'SELECT position, search_volume FROM rankings WHERE import_id=? AND position IS NOT NULL',
+        (import_id,)
+    ).fetchall()
+    if not rows:
+        return None
+    positions   = [r['position'] for r in rows]
+    traffic     = sum(ctr(r['position']) * (r['search_volume'] or 0) for r in rows)
+    potential   = sum((r['search_volume'] or 0) for r in rows)
+    avg_pos     = sum(positions) / len(positions)
+    visibility  = (traffic / potential * 100) if potential else 0
+    return {
+        'avg_position':   round(avg_pos, 2),
+        'traffic':        round(traffic, 2),
+        'visibility_pct': round(visibility, 2),
+        'total':  len(rows),
+        'top3':   sum(1 for p in positions if p <= 3),
+        'top10':  sum(1 for p in positions if p <= 10),
+        'top20':  sum(1 for p in positions if p <= 20),
+        'top100': sum(1 for p in positions if p <= 100),
+    }
+
+def fmt_date_range(d1: str, d2: str) -> str:
+    """'2026-05-07', '2026-05-13'  →  '7-13 may 2026'"""
+    import calendar
+    try:
+        a = datetime.strptime(d1, '%Y-%m-%d')
+        b = datetime.strptime(d2, '%Y-%m-%d')
+        month = calendar.month_abbr[b.month].lower()
+        if a.month == b.month and a.year == b.year:
+            return f'{a.day}-{b.day} {month} {b.year}'
+        ma = calendar.month_abbr[a.month].lower()
+        return f'{a.day} {ma} - {b.day} {month} {b.year}'
+    except Exception:
+        return f'{d1} – {d2}'
+
 def gsc_is_authenticated():
     if not os.path.exists(GSC_TOKEN_PATH):
         return False
@@ -617,6 +662,176 @@ def keyword_delete(ranking_id):
     return redirect(url_for('rankings', date=return_date, domain=return_domain))
 
 
+@app.route('/overview')
+def overview():
+    conn = get_db()
+
+    domains = [r['domain'] for r in conn.execute(
+        'SELECT DISTINCT domain FROM rankings ORDER BY domain'
+    ).fetchall()]
+    selected_domain = request.args.get('domain', domains[0] if domains else '')
+
+    # All imports for this domain, ordered ascending
+    all_imports = conn.execute(
+        'SELECT * FROM imports WHERE domain=? ORDER BY report_date ASC', (selected_domain,)
+    ).fetchall()
+
+    if not all_imports:
+        conn.close()
+        return render_template('overview.html', no_data=True, domains=domains,
+                               selected_domain=selected_domain)
+
+    # Default: compare second-to-last vs latest; or just latest if only one
+    imp_latest = all_imports[-1]
+    imp_prev   = all_imports[-2] if len(all_imports) >= 2 else None
+
+    id1 = request.args.get('imp1', str(imp_prev['id']) if imp_prev else '')
+    id2 = request.args.get('imp2', str(imp_latest['id']))
+
+    # Resolve chosen imports
+    def find_imp(iid):
+        for i in all_imports:
+            if str(i['id']) == str(iid):
+                return i
+        return None
+
+    imp2 = find_imp(id2) or imp_latest
+    imp1 = find_imp(id1) if id1 else imp_prev
+
+    kpis2 = compute_import_kpis(imp2['id'], conn)
+    kpis1 = compute_import_kpis(imp1['id'], conn) if imp1 else None
+
+    def diff(a, b, key):
+        if a is None or b is None: return None
+        return round(a[key] - b[key], 2)
+
+    kpis = {
+        'visibility':   {'val': kpis2['visibility_pct'] if kpis2 else 0,
+                         'diff': diff(kpis2, kpis1, 'visibility_pct')},
+        'traffic':      {'val': kpis2['traffic'] if kpis2 else 0,
+                         'diff': diff(kpis2, kpis1, 'traffic')},
+        'avg_position': {'val': kpis2['avg_position'] if kpis2 else 0,
+                         'diff': diff(kpis2, kpis1, 'avg_position')},
+    }
+
+    # ── Stacked bar chart data (one bar per import) ──────────────────────────
+    chart_labels, c_top3, c_top10, c_top20, c_top100 = [], [], [], [], []
+    for imp in all_imports:
+        rows = conn.execute(
+            'SELECT position FROM rankings WHERE import_id=? AND position IS NOT NULL',
+            (imp['id'],)
+        ).fetchall()
+        positions = [r['position'] for r in rows]
+        chart_labels.append(imp['report_date'])
+        c_top3.append(sum(1 for p in positions if p <= 3))
+        c_top10.append(sum(1 for p in positions if 4 <= p <= 10))
+        c_top20.append(sum(1 for p in positions if 11 <= p <= 20))
+        c_top100.append(sum(1 for p in positions if 21 <= p <= 100))
+
+    # ── Keywords panel: counts + sparklines + new/lost ───────────────────────
+    def kw_counts_over_time(bucket_fn):
+        return [sum(1 for p in [r['position'] for r in conn.execute(
+            'SELECT position FROM rankings WHERE import_id=? AND position IS NOT NULL',
+            (imp['id'],)).fetchall()] if p and bucket_fn(p)) for imp in all_imports]
+
+    def new_lost(imp_before, imp_after, bucket_fn):
+        if not imp_before:
+            return 0, 0
+        kw_before = {r['keyword'] for r in conn.execute(
+            'SELECT keyword,position FROM rankings WHERE import_id=? AND position IS NOT NULL',
+            (imp_before['id'],)).fetchall() if bucket_fn(r['position'])}
+        kw_after = {r['keyword'] for r in conn.execute(
+            'SELECT keyword,position FROM rankings WHERE import_id=? AND position IS NOT NULL',
+            (imp_after['id'],)).fetchall() if bucket_fn(r['position'])}
+        return len(kw_after - kw_before), len(kw_before - kw_after)
+
+    kw_panel = {}
+    for label, fn in [('top3', lambda p: p<=3), ('top10', lambda p: p<=10),
+                       ('top20', lambda p: p<=20), ('top100', lambda p: p<=100)]:
+        sparkline = kw_counts_over_time(fn)
+        new, lost = new_lost(imp1, imp2, fn)
+        count = sparkline[-1] if sparkline else 0
+        kw_panel[label] = {'count': count, 'sparkline': sparkline,
+                           'new': new, 'lost': lost}
+
+    # ── Improved / declined ──────────────────────────────────────────────────
+    improved = declined = 0
+    if imp1:
+        prev_map = {r['keyword']: r['position'] for r in conn.execute(
+            'SELECT keyword, position FROM rankings WHERE import_id=? AND position IS NOT NULL',
+            (imp1['id'],)).fetchall()}
+        for r in conn.execute(
+            'SELECT keyword, position FROM rankings WHERE import_id=? AND position IS NOT NULL',
+            (imp2['id'],)).fetchall():
+            prev = prev_map.get(r['keyword'])
+            if prev:
+                if r['position'] < prev: improved += 1
+                elif r['position'] > prev: declined += 1
+
+    # ── Comparison table ─────────────────────────────────────────────────────
+    rows2 = {r['keyword']: r for r in conn.execute(
+        '''SELECT r.*, COALESCE(kl.labels,'') as user_labels
+           FROM rankings r
+           LEFT JOIN keyword_labels kl ON kl.domain=r.domain AND kl.keyword=r.keyword
+           WHERE r.import_id=?''', (imp2['id'],)).fetchall()}
+    rows1 = {}
+    if imp1:
+        rows1 = {r['keyword']: r['position'] for r in conn.execute(
+            'SELECT keyword, position FROM rankings WHERE import_id=?',
+            (imp1['id'],)).fetchall()}
+
+    # Union of all keywords from both imports
+    all_kws = set(rows2.keys())
+    if imp1:
+        all_kws |= {r['keyword'] for r in conn.execute(
+            'SELECT keyword FROM rankings WHERE import_id=?', (imp1['id'],)).fetchall()}
+
+    table_rows = []
+    for kw in all_kws:
+        r2 = rows2.get(kw)
+        pos1 = rows1.get(kw)
+        pos2 = r2['position'] if r2 else None
+        vol  = r2['search_volume'] if r2 else None
+        diff_pos = None
+        if pos1 is not None and pos2 is not None:
+            diff_pos = pos1 - pos2  # positive = improved (lower number = better)
+        elif pos2 is None:
+            diff_pos = None  # lost
+
+        traffic_est = round(ctr(pos2) * (vol or 0), 2) if pos2 else 0
+        traffic_prev = round(ctr(pos1) * (vol or 0), 2) if pos1 else 0
+        table_rows.append({
+            'keyword':      kw,
+            'intents':      r2['intents'] if r2 else None,
+            'result_type':  r2['result_type'] if r2 else None,
+            'pos1':         pos1,
+            'pos2':         pos2,
+            'diff':         diff_pos,
+            'volume':       vol,
+            'traffic_est':  traffic_est,
+            'traffic_diff': round(traffic_est - traffic_prev, 2),
+            'url':          r2['landing_url'] if r2 else None,
+            'user_labels':  r2['user_labels'] if r2 else '',
+        })
+
+    # Sort by volume desc
+    table_rows.sort(key=lambda x: (x['volume'] or 0), reverse=True)
+
+    date_range = fmt_date_range(
+        (imp1 or imp2)['report_date'], imp2['report_date']
+    )
+
+    conn.close()
+    return render_template('overview.html',
+        domains=domains, selected_domain=selected_domain,
+        all_imports=all_imports, imp1=imp1, imp2=imp2,
+        kpis=kpis, chart_labels=chart_labels,
+        c_top3=c_top3, c_top10=c_top10, c_top20=c_top20, c_top100=c_top100,
+        kw_panel=kw_panel, improved=improved, declined=declined,
+        table_rows=table_rows, date_range=date_range,
+        no_data=False)
+
+
 @app.route('/api/labels/all')
 def all_labels_api():
     domain = request.args.get('domain', '')
@@ -976,6 +1191,14 @@ def gsc_fetch():
 
     return redirect(url_for('integrations'))
 
+
+@app.template_filter('abs')
+def abs_filter(v):
+    return abs(v) if v is not None else None
+
+@app.template_global('fmt_range')
+def fmt_range(d1, d2):
+    return fmt_date_range(d1, d2)
 
 if __name__ == '__main__':
     init_db()

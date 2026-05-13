@@ -1,0 +1,631 @@
+{% extends "base.html" %}
+{% block title %}Panorama — SERP Tracker Brasil{% endblock %}
+
+{% block content %}
+
+{# ── Header bar ──────────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+  <h4 class="fw-bold mb-0 me-2">Panorama</h4>
+
+  {# Domain pill #}
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+            data-bs-toggle="dropdown">
+      <i class="bi bi-globe2 text-primary"></i>
+      <strong>{{ selected_domain }}</strong>
+      <i class="bi bi-x text-muted ms-1"></i>
+    </button>
+    <ul class="dropdown-menu shadow-sm border-0">
+      {% for d in domains %}
+      <li><a class="dropdown-item small {% if d == selected_domain %}active{% endif %}"
+             href="{{ url_for('overview', domain=d) }}">{{ d }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {% if not no_data %}
+  {# Date range pill #}
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+            data-bs-toggle="dropdown">
+      <i class="bi bi-calendar3 text-secondary"></i>
+      <span>{{ date_range }}</span>
+      <i class="bi bi-chevron-down ms-1 small"></i>
+    </button>
+    <ul class="dropdown-menu shadow-sm border-0" style="min-width:260px">
+      <li><div class="dropdown-header small text-muted px-3">Comparar com…</div></li>
+      {% for i2 in all_imports|reverse %}
+        {% for i1 in all_imports %}
+          {% if i1.report_date < i2.report_date %}
+          <li>
+            <a class="dropdown-item small {% if i1.id==imp1.id and i2.id==imp2.id %}active{% endif %}"
+               href="{{ url_for('overview', domain=selected_domain, imp1=i1.id, imp2=i2.id) }}">
+              {{ fmt_range(i1.report_date, i2.report_date) }}
+            </a>
+          </li>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+      {% if all_imports|length == 1 %}
+      <li><span class="dropdown-item-text small text-muted px-3">Sube más archivos para comparar períodos.</span></li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+
+{% if no_data %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-inbox display-4 d-block mb-3"></i>
+  <p>Nenhum dado importado ainda.<br>Faça upload de um arquivo SEMrush no <a href="{{ url_for('index') }}">Dashboard</a>.</p>
+</div>
+{% else %}
+
+{# ── Row 1: KPIs + Summary ────────────────────────────────────────────────── #}
+<div class="row g-3 mb-3">
+
+  {# KPIs #}
+  <div class="col-12 col-lg-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body p-0">
+
+        {# Visibility #}
+        <div class="kpi-row border-bottom px-4 py-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="kpi-label">Visibilidade <i class="bi bi-info-circle text-muted small"></i></div>
+              <div class="kpi-value">
+                {{ '%.2f'|format(kpis.visibility.val) }}%
+                {% if kpis.visibility.diff is not none %}
+                <span class="kpi-diff {{ 'kpi-pos' if kpis.visibility.diff >= 0 else 'kpi-neg' }}">
+                  {{ ('+'if kpis.visibility.diff>=0 else '') }}{{ '%.2f'|format(kpis.visibility.diff) }}%
+                </span>
+                {% endif %}
+              </div>
+            </div>
+            <canvas id="sparkVis" width="130" height="40" class="mt-1"></canvas>
+          </div>
+        </div>
+
+        {# Traffic #}
+        <div class="kpi-row border-bottom px-4 py-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="kpi-label">Tráfego estimado <i class="bi bi-info-circle text-muted small"></i></div>
+              <div class="kpi-value">
+                {{ '{:,.0f}'.format(kpis.traffic.val) }}
+                {% if kpis.traffic.diff is not none %}
+                <span class="kpi-diff {{ 'kpi-pos' if kpis.traffic.diff >= 0 else 'kpi-neg' }}">
+                  {{ ('+'if kpis.traffic.diff>=0 else '') }}{{ '{:,.0f}'.format(kpis.traffic.diff) }}
+                </span>
+                {% endif %}
+              </div>
+            </div>
+            <canvas id="sparkTraffic" width="130" height="40" class="mt-1"></canvas>
+          </div>
+        </div>
+
+        {# Avg position #}
+        <div class="kpi-row px-4 py-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="kpi-label">Posição média <i class="bi bi-info-circle text-muted small"></i></div>
+              <div class="kpi-value">
+                {{ '%.2f'|format(kpis.avg_position.val) }}
+                {% if kpis.avg_position.diff is not none %}
+                {# For avg position: lower is better, so negative diff = improvement #}
+                <span class="kpi-diff {{ 'kpi-pos' if kpis.avg_position.diff <= 0 else 'kpi-neg' }}">
+                  {% if kpis.avg_position.diff > 0 %}
+                    <i class="bi bi-arrow-down-short"></i>{{ '%.2f'|format(kpis.avg_position.diff) }}
+                  {% elif kpis.avg_position.diff < 0 %}
+                    <i class="bi bi-arrow-up-short"></i>{{ '%.2f'|format(kpis.avg_position.diff|abs) }}
+                  {% else %}
+                    0
+                  {% endif %}
+                </span>
+                {% endif %}
+              </div>
+            </div>
+            <canvas id="sparkPos" width="130" height="40" class="mt-1"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  {# Summary #}
+  <div class="col-12 col-lg-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom py-2 d-flex align-items-center gap-2">
+        <span class="fw-semibold">Resumo</span>
+        <span class="badge bg-success-subtle text-success-emphasis" style="font-size:.65rem">novo</span>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Rendimento de <strong>{{ selected_domain }}</strong> no Google Brasil
+          {% if imp1 %} de <strong>{{ imp1.report_date }}</strong> a{% endif %}
+          <strong>{{ imp2.report_date }}</strong>.
+        </p>
+        <ul class="summary-bullets small mb-0">
+          <li>
+            Melhorou a posição de <strong class="text-success">{{ improved }}</strong> palavras-chave
+            e piorou a posição de <strong class="text-danger">{{ declined }}</strong> palavras-chave.
+          </li>
+          <li>
+            O domínio tem <strong class="text-success">{{ kw_panel.top3.new }}</strong> palavras-chave novas no top 3
+            (<strong class="text-danger">{{ kw_panel.top3.lost }}</strong> perdidas).
+            Também tem <strong class="text-success">{{ kw_panel.top10.new }}</strong> novas no top 10
+            (<strong class="text-danger">{{ kw_panel.top10.lost }}</strong> perdidas).
+          </li>
+          <li>
+            A posição média {% if kpis.avg_position.diff is not none and kpis.avg_position.diff != 0 %}
+              {% if kpis.avg_position.diff < 0 %}
+                <span class="text-success">melhorou {{ '%.2f'|format(kpis.avg_position.diff|abs) }} pontos</span>
+              {% else %}
+                <span class="text-danger">piorou {{ '%.2f'|format(kpis.avg_position.diff) }} pontos</span>
+              {% endif %}
+            {% else %}
+              permaneceu estável
+            {% endif %}
+            em relação ao período anterior.
+          </li>
+          <li>
+            Tráfego estimado: <strong>{{ '{:,.0f}'.format(kpis.traffic.val) }}</strong> visitas/mês.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Row 2: Bar chart + Keyword panel ────────────────────────────────────── #}
+<div class="row g-3 mb-3">
+
+  {# Stacked bar chart #}
+  <div class="col-12 col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-bottom py-2">
+        <div class="d-flex align-items-center gap-3">
+          <span class="fw-semibold small">Distribuição de rankings</span>
+          <div class="d-flex gap-2 ms-auto">
+            <span class="legend-dot" style="background:#FFC107"></span><span class="small">#1-3</span>
+            <span class="legend-dot" style="background:#1976D2"></span><span class="small">#4-10</span>
+            <span class="legend-dot" style="background:#64B5F6"></span><span class="small">#11-20</span>
+            <span class="legend-dot" style="background:#BBDEFB"></span><span class="small">#21-100</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-body py-3">
+        <canvas id="rankingDistChart" height="160"></canvas>
+      </div>
+    </div>
+  </div>
+
+  {# Keywords panel #}
+  <div class="col-12 col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom py-2">
+        <span class="fw-semibold small">Palavras-chave</span>
+        <i class="bi bi-info-circle text-muted small ms-1"></i>
+      </div>
+      <div class="card-body p-0">
+        {% for bucket, label in [('top3','Top 3'),('top10','Top 10'),('top20','Top 20'),('top100','Top 100')] %}
+        <div class="kw-panel-row {% if not loop.last %}border-bottom{% endif %} px-3 py-2 d-flex align-items-center gap-2">
+          <div class="kw-panel-donut" style="--pct:{{ [(kw_panel[bucket].count / (table_rows|length) * 100)|round(0), 100]|min }}">
+            <svg viewBox="0 0 36 36">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none" stroke="#E8EAF6" stroke-width="3"/>
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none" stroke="#1976D2" stroke-width="3"
+                    stroke-dasharray="{{ [(kw_panel[bucket].count / (table_rows|length) * 100)|round(1), 100]|min }}, 100"/>
+              <text x="18" y="20.5" class="donut-text">{{ kw_panel[bucket].count }}</text>
+            </svg>
+          </div>
+          <div class="flex-grow-1">
+            <div class="small fw-semibold">{{ label }}</div>
+            <div class="d-flex gap-2 small">
+              <span class="text-success">Novas {{ kw_panel[bucket].new }}</span>
+              <span class="text-danger">Perdidas {{ kw_panel[bucket].lost }}</span>
+            </div>
+          </div>
+          <div>
+            <canvas class="sparkline-kw" width="80" height="30"
+                    data-values="{{ kw_panel[bucket].sparkline|join(',') }}"></canvas>
+          </div>
+        </div>
+        {% endfor %}
+
+        {# Mejoradas vs en declive #}
+        <div class="px-3 py-2 border-top d-flex align-items-center gap-3">
+          <span class="small fw-semibold">Melhoradas vs. em declínio</span>
+          <div class="d-flex align-items-center gap-2 ms-auto">
+            <span class="improved-badge">{{ improved }}</span>
+            <div class="trend-bar-mini">
+              <div class="trend-green" style="width:{{ [(improved/(improved+declined+1)*100)|round(0), 100]|min }}%"></div>
+              <div class="trend-red"  style="width:{{ [(declined/(improved+declined+1)*100)|round(0), 100]|min }}%"></div>
+            </div>
+            <span class="declined-badge">{{ declined }}</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Rankings comparison table ────────────────────────────────────────────── #}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-bottom py-2">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="fw-semibold small">Visão geral do ranking</span>
+      <span class="text-muted small">1-{{ [table_rows|length, 100]|min }} ({{ table_rows|length }})</span>
+
+      <div class="ms-auto d-flex flex-wrap gap-1">
+        <button class="btn btn-xs btn-outline-secondary active" onclick="filterTable('all',this)">Posições</button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="filterTable('traffic',this)">Tráfego est.</button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="filterTable('top100',this)">Top 100</button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="filterTable('lost',this)">Perdidas</button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="filterTable('new',this)">Novas</button>
+        <span class="btn btn-xs btn-primary">Todo para {{ selected_domain }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive" style="max-height:65vh">
+    <table class="table table-hover align-middle mb-0 semrush-table" id="overviewTable">
+      <thead class="sticky-top bg-white border-bottom">
+        <tr>
+          <th style="width:28px"></th>
+          <th style="width:28px"><input type="checkbox" class="form-check-input"></th>
+          <th>Palavra-chave</th>
+          <th>Intenção</th>
+          <th class="text-center sortable" onclick="sortTable('pos1')">
+            Pos. {{ imp1.report_date if imp1 else '—' }}
+            <i class="bi bi-chevron-expand text-muted small"></i>
+          </th>
+          <th class="text-center sortable" onclick="sortTable('pos2')">
+            Pos. {{ imp2.report_date }}
+            <i class="bi bi-chevron-expand text-muted small"></i>
+          </th>
+          <th class="text-center sortable" onclick="sortTable('diff')">
+            Dif. <i class="bi bi-chevron-expand text-muted small"></i>
+          </th>
+          <th class="text-center sortable" onclick="sortTable('traffic')">
+            Tráfego est. <i class="bi bi-chevron-expand text-muted small"></i>
+          </th>
+          <th class="text-center sortable" onclick="sortTable('volume')">
+            Vol. <i class="bi bi-chevron-expand text-muted small"></i>
+          </th>
+          <th>URL</th>
+        </tr>
+      </thead>
+      <tbody id="overviewBody">
+        {% for row in table_rows[:300] %}
+        <tr class="overview-row"
+            data-keyword="{{ row.keyword }}"
+            data-domain="{{ selected_domain }}"
+            data-pos1="{{ row.pos1 or '' }}"
+            data-pos2="{{ row.pos2 or '' }}"
+            data-diff="{{ row.diff or '' }}"
+            data-traffic="{{ row.traffic_est or 0 }}"
+            data-volume="{{ row.volume or 0 }}">
+
+          {# Expand arrow #}
+          <td class="ps-2">
+            <button class="btn-expand" onclick="toggleRow(this, '{{ row.keyword|e }}', '{{ selected_domain }}')">
+              <i class="bi bi-chevron-right"></i>
+            </button>
+          </td>
+          <td><input type="checkbox" class="form-check-input"></td>
+
+          {# Keyword #}
+          <td>
+            <a href="{{ url_for('serp', keyword=row.keyword) }}"
+               class="text-decoration-none text-primary-emphasis fw-semibold small">
+              {{ row.keyword }}
+            </a>
+            {% if row.user_labels %}
+              {% for lbl in row.user_labels.split(',') %}
+              <span class="label-chip ms-1">{{ lbl.strip() }}</span>
+              {% endfor %}
+            {% endif %}
+          </td>
+
+          {# Intent #}
+          <td>
+            {% if row.intents %}
+              {% for intent in row.intents.split('|') %}
+              <span class="intent-circle intent-{{ intent.strip() }}" title="{{ intent.strip() }}">
+                {{ intent.strip()[0]|upper }}
+              </span>
+              {% endfor %}
+            {% else %}—{% endif %}
+          </td>
+
+          {# Pos 1 #}
+          <td class="text-center">
+            {% if row.pos1 %}
+            <span class="pos-cell pos-{{ 'top3' if row.pos1<=3 else ('top10' if row.pos1<=10 else 'other') }}">
+              {{ row.pos1 }}
+            </span>
+            {% else %}
+            <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+
+          {# Pos 2 #}
+          <td class="text-center">
+            {% if row.pos2 %}
+            <span class="pos-cell pos-{{ 'top3' if row.pos2<=3 else ('top10' if row.pos2<=10 else 'other') }}">
+              {{ row.pos2 }}
+            </span>
+            {% else %}
+            <span class="lost-badge">perdido</span>
+            {% endif %}
+          </td>
+
+          {# Diff #}
+          <td class="text-center fw-semibold small">
+            {% if row.diff is not none %}
+              {% if row.diff > 0 %}
+                <span class="text-success"><i class="bi bi-arrow-up-short"></i>{{ row.diff }}</span>
+              {% elif row.diff < 0 %}
+                <span class="text-danger"><i class="bi bi-arrow-down-short"></i>{{ row.diff|abs }}</span>
+              {% else %}
+                <span class="text-muted">0</span>
+              {% endif %}
+            {% elif row.pos2 is none and row.pos1 %}
+              <span class="lost-badge">perdido</span>
+            {% elif row.pos1 is none and row.pos2 %}
+              <span class="new-badge">novo</span>
+            {% else %}—{% endif %}
+          </td>
+
+          {# Traffic est #}
+          <td class="text-center small">
+            <span>{{ '{:,.2f}'.format(row.traffic_est) }}</span>
+            {% if row.traffic_diff %}
+            <span class="small {{ 'text-success' if row.traffic_diff > 0 else 'text-danger' }}">
+              {{ '{:+,.2f}'.format(row.traffic_diff) }}
+            </span>
+            {% endif %}
+          </td>
+
+          {# Volume #}
+          <td class="text-center small fw-semibold">
+            {{ '{:,}'.format(row.volume) if row.volume else '—' }}
+          </td>
+
+          {# URL #}
+          <td class="text-truncate small" style="max-width:200px">
+            {% if row.url %}
+            <a href="{{ row.url }}" target="_blank" class="text-muted text-decoration-none" title="{{ row.url }}">
+              {{ row.url|replace('https://www.','') }}
+            </a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+
+        {# Expandable detail row #}
+        <tr class="expand-detail d-none" id="detail-{{ loop.index }}">
+          <td colspan="10" class="bg-light px-5 py-3">
+            <div class="row g-3 align-items-center">
+              <div class="col-12 col-md-8">
+                <div class="small fw-semibold mb-1 text-muted">
+                  Posições — {{ row.keyword }}
+                </div>
+                <canvas id="minichart-{{ loop.index }}" height="60"></canvas>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="d-flex flex-column gap-1 small">
+                  <div><span class="text-muted">Volume:</span> <strong>{{ '{:,}'.format(row.volume) if row.volume else '—' }}</strong></div>
+                  <div><span class="text-muted">Tráfego est.:</span> <strong>{{ '{:,.1f}'.format(row.traffic_est) }}</strong></div>
+                  <div><span class="text-muted">Intenção:</span>
+                    {% if row.intents %}
+                      {% for i in row.intents.split('|') %}
+                      <span class="intent-circle intent-{{ i.strip() }}">{{ i.strip()[0]|upper }}</span>
+                      {% endfor %}
+                    {% else %}—{% endif %}
+                  </div>
+                  {% if row.url %}
+                  <div class="text-truncate"><a href="{{ row.url }}" target="_blank" class="small">{{ row.url|replace('https://','') }}</a></div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}{# end no_data #}
+{% endblock %}
+
+
+{% block scripts %}
+{% if not no_data %}
+<script>
+// ── Data from server ─────────────────────────────────────────────────────────
+const CHART_LABELS = {{ chart_labels | tojson }};
+const C_TOP3   = {{ c_top3  | tojson }};
+const C_TOP10  = {{ c_top10 | tojson }};
+const C_TOP20  = {{ c_top20 | tojson }};
+const C_TOP100 = {{ c_top100| tojson }};
+const KW_VIS     = {{ kw_panel.top3.sparkline  | tojson }};
+const KW_TRAFFIC = {{ kw_panel.top10.sparkline | tojson }};
+const KW_POS     = {{ kw_panel.top20.sparkline | tojson }};
+const DOMAIN = {{ selected_domain | tojson }};
+
+// ── Stacked bar chart ─────────────────────────────────────────────────────────
+new Chart(document.getElementById('rankingDistChart'), {
+  type: 'bar',
+  data: {
+    labels: CHART_LABELS,
+    datasets: [
+      { label: '#1-3',    data: C_TOP3,   backgroundColor: '#FFC107', stack: 's' },
+      { label: '#4-10',   data: C_TOP10,  backgroundColor: '#1976D2', stack: 's' },
+      { label: '#11-20',  data: C_TOP20,  backgroundColor: '#64B5F6', stack: 's' },
+      { label: '#21-100', data: C_TOP100, backgroundColor: '#BBDEFB', stack: 's' },
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { display: false } },
+      y: { stacked: true, title: { display: true, text: 'Palavras-chave', font: { size: 10 } } }
+    }
+  }
+});
+
+// ── KPI sparklines ────────────────────────────────────────────────────────────
+function miniLine(id, data, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx || !data.length) return;
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map((_, i) => i),
+      datasets: [{ data, borderColor: color, borderWidth: 1.5,
+                   fill: true, backgroundColor: color + '22',
+                   tension: 0.3, pointRadius: 0 }]
+    },
+    options: {
+      responsive: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false,
+        reverse: id === 'sparkPos' } }
+    }
+  });
+}
+miniLine('sparkVis',     KW_VIS,     '#1976D2');
+miniLine('sparkTraffic', KW_TRAFFIC, '#34A853');
+miniLine('sparkPos',     KW_POS,     '#EA4335');
+
+// ── Keyword panel sparklines ──────────────────────────────────────────────────
+document.querySelectorAll('.sparkline-kw').forEach(canvas => {
+  const vals = (canvas.dataset.values || '').split(',').map(Number).filter(v => !isNaN(v));
+  if (!vals.length) return;
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: vals.map((_, i) => i),
+      datasets: [{ data: vals, borderColor: '#1976D2', borderWidth: 1.5,
+                   fill: false, tension: 0.3, pointRadius: 0 }]
+    },
+    options: {
+      responsive: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } }
+    }
+  });
+});
+
+// ── Expandable rows ──────────────────────────────────────────────────────────
+const openedCharts = {};
+
+function toggleRow(btn, keyword, domain) {
+  const tr = btn.closest('tr');
+  const detail = tr.nextElementSibling;
+  const icon = btn.querySelector('i');
+  const isOpen = !detail.classList.contains('d-none');
+
+  if (isOpen) {
+    detail.classList.add('d-none');
+    icon.className = 'bi bi-chevron-right';
+    return;
+  }
+
+  detail.classList.remove('d-none');
+  icon.className = 'bi bi-chevron-down';
+
+  const canvasId = detail.querySelector('canvas').id;
+  if (openedCharts[canvasId]) return; // already rendered
+
+  fetch(`/api/keyword-trend?keyword=${encodeURIComponent(keyword)}&domain=${encodeURIComponent(domain)}`)
+    .then(r => r.json())
+    .then(data => {
+      const ctx = document.getElementById(canvasId);
+      if (!ctx || !data.length) return;
+      openedCharts[canvasId] = true;
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.date),
+          datasets: [{
+            label: 'Posição',
+            data: data.map(d => d.position),
+            borderColor: '#1976D2',
+            backgroundColor: 'rgba(25,118,210,.08)',
+            tension: 0.3, fill: true,
+            pointRadius: 4, pointBackgroundColor: '#1976D2',
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { reverse: true, min: 1,
+                 title: { display: true, text: 'Posição', font: { size: 10 } } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => `#${c.parsed.y}` } }
+          }
+        }
+      });
+    });
+}
+
+// ── Table filtering ──────────────────────────────────────────────────────────
+function filterTable(mode, btn) {
+  document.querySelectorAll('.card-header .btn-xs').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  document.querySelectorAll('#overviewBody .overview-row').forEach(tr => {
+    const pos2 = parseInt(tr.dataset.pos2) || 0;
+    const pos1 = parseInt(tr.dataset.pos1) || 0;
+    let show = true;
+
+    if (mode === 'traffic') show = parseFloat(tr.dataset.traffic) > 0;
+    else if (mode === 'top100') show = pos2 > 0 && pos2 <= 100;
+    else if (mode === 'lost') show = pos1 > 0 && pos2 === 0;
+    else if (mode === 'new') show = pos1 === 0 && pos2 > 0;
+
+    tr.style.display = show ? '' : 'none';
+    tr.nextElementSibling.style.display = 'none'; // collapse detail rows
+    tr.nextElementSibling.classList.add('d-none');
+  });
+}
+
+// ── Table sorting ─────────────────────────────────────────────────────────────
+let sortDir = {};
+function sortTable(col) {
+  sortDir[col] = !sortDir[col];
+  const tbody = document.getElementById('overviewBody');
+  const pairs = [];
+  const rows = tbody.querySelectorAll('.overview-row');
+
+  rows.forEach(tr => {
+    pairs.push([tr, tr.nextElementSibling]); // row + detail
+  });
+
+  pairs.sort(([a], [b]) => {
+    let va, vb;
+    if (col === 'pos2')    { va = parseInt(a.dataset.pos2)||999;  vb = parseInt(b.dataset.pos2)||999; }
+    else if (col === 'pos1')    { va = parseInt(a.dataset.pos1)||999;  vb = parseInt(b.dataset.pos1)||999; }
+    else if (col === 'diff')    { va = parseFloat(a.dataset.diff)||0;  vb = parseFloat(b.dataset.diff)||0; }
+    else if (col === 'traffic') { va = parseFloat(a.dataset.traffic);  vb = parseFloat(b.dataset.traffic); }
+    else if (col === 'volume')  { va = parseFloat(a.dataset.volume);   vb = parseFloat(b.dataset.volume); }
+    const dir = sortDir[col] ? 1 : -1;
+    return (va - vb) * dir;
+  });
+
+  pairs.forEach(([row, detail]) => { tbody.appendChild(row); tbody.appendChild(detail); });
+}
+</script>
+{% endif %}
+{% endblock %}

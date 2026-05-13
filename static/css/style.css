@@ -175,6 +175,84 @@
 /* ── Scrollable table ── */
 .table-responsive { max-height: 70vh; overflow-y: auto; }
 
+/* ══════════════════════════════════════════════════════
+   PANORAMA / OVERVIEW  (SEMrush-style)
+   ══════════════════════════════════════════════════════ */
+
+/* KPI cards */
+.kpi-row { transition: background .15s; }
+.kpi-row:hover { background: #fafbff; }
+.kpi-label { font-size: .75rem; color: #5f6368; font-weight: 500; margin-bottom: 2px; }
+.kpi-value { font-size: 1.9rem; font-weight: 700; color: #202124; line-height: 1.1; }
+.kpi-diff  { font-size: .8rem; font-weight: 600; margin-left: 6px; }
+.kpi-pos   { color: #34A853; }
+.kpi-neg   { color: #EA4335; }
+
+/* Summary bullets */
+.summary-bullets { list-style: none; padding: 0; margin: 0; }
+.summary-bullets li { padding: 4px 0; border-bottom: 1px solid #f1f3f4; }
+.summary-bullets li:last-child { border-bottom: none; }
+.summary-bullets li::before { content: "• "; color: #1976D2; font-weight: 700; }
+
+/* Legend dots */
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+
+/* Keyword panel donut */
+.kw-panel-row { transition: background .12s; }
+.kw-panel-row:hover { background: #f8f9fa; }
+.kw-panel-donut svg { width: 44px; height: 44px; }
+.donut-text { font-size: 9px; font-weight: 700; fill: #202124;
+              text-anchor: middle; dominant-baseline: middle; }
+
+/* Improved vs declined mini bar */
+.trend-bar-mini { width: 60px; height: 10px; border-radius: 5px;
+                  overflow: hidden; display: flex; background: #f1f3f4; }
+.trend-green { background: #34A853; height: 100%; }
+.trend-red   { background: #EA4335; height: 100%; }
+.improved-badge { font-size: .85rem; font-weight: 700; color: #34A853; }
+.declined-badge { font-size: .85rem; font-weight: 700; color: #EA4335; }
+
+/* SEMrush rankings table */
+.semrush-table { font-size: .82rem; }
+.semrush-table th { font-size: .75rem; font-weight: 600; color: #5f6368;
+                    text-transform: uppercase; letter-spacing: .3px;
+                    white-space: nowrap; background: #fff; }
+.semrush-table td { vertical-align: middle; }
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: #1976D2; }
+
+/* Expand button */
+.btn-expand { background: none; border: none; padding: 0 4px;
+              color: #5f6368; cursor: pointer; transition: color .15s; }
+.btn-expand:hover { color: #1976D2; }
+
+/* Position cell */
+.pos-cell { display: inline-block; min-width: 28px; text-align: center;
+            padding: 1px 5px; border-radius: 4px; font-weight: 700; }
+.pos-top3  { background: #FFF8E1; color: #F57F17; }
+.pos-top10 { background: #E3F2FD; color: #1565C0; }
+.pos-other { background: #F5F5F5; color: #424242; }
+
+/* Lost / New badges (table) */
+.lost-badge { background: #FCE8E6; color: #C5221F;
+              font-size: .7rem; font-weight: 600;
+              padding: 1px 6px; border-radius: 4px; }
+.new-badge  { background: #E6F4EA; color: #137333;
+              font-size: .7rem; font-weight: 600;
+              padding: 1px 6px; border-radius: 4px; }
+
+/* Intent circles (SEMrush-style) */
+.intent-circle { display: inline-flex; align-items: center; justify-content: center;
+                 width: 18px; height: 18px; border-radius: 50%;
+                 font-size: .65rem; font-weight: 700; margin-right: 2px; }
+.intent-circle.intent-i { background: #E8F0FE; color: #1967D2; }
+.intent-circle.intent-c { background: #E6F4EA; color: #137333; }
+.intent-circle.intent-t { background: #FEF7E0; color: #E37400; }
+.intent-circle.intent-n { background: #F5F5F5; color: #5f6368; }
+
+/* Expand detail row */
+.expand-detail td { border-top: none !important; }
+
 /* ── Integration icons ── */
 .integration-icon {
   width: 40px; height: 40px; border-radius: 10px;
