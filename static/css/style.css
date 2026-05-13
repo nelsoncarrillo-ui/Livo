@@ -1,0 +1,227 @@
+/* ── Google brand colors ── */
+.text-google-b { color: #4285F4; }
+.text-google-r { color: #EA4335; }
+.text-google-y { color: #FBBC05; }
+.text-google-g { color: #34A853; }
+
+/* ── Navbar ── */
+.navbar-brand { font-size: 1.1rem; letter-spacing: .5px; }
+
+/* ── Stat cards ── */
+.stat-card { border-radius: 12px; transition: transform .15s; }
+.stat-card:hover { transform: translateY(-2px); }
+.stat-icon { font-size: 1.8rem; margin-bottom: 4px; }
+.stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+.stat-label { font-size: .75rem; color: #6c757d; text-transform: uppercase; letter-spacing: .5px; }
+
+/* ── Upload zone ── */
+.upload-zone {
+  border: 2px dashed #ced4da;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: #4285F4;
+  background: #f0f6ff;
+}
+
+/* ── Position badges ── */
+.position-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: .8rem;
+  padding: 0 6px;
+}
+.pos-top1  { background: #FFD700; color: #5a4000; }
+.pos-top3  { background: #C8E6C9; color: #1B5E20; }
+.pos-top10 { background: #BBDEFB; color: #0D47A1; }
+.pos-other { background: #F5F5F5; color: #555; }
+
+/* ── Result type badges ── */
+.result-type-ai_overview   { background: #E8F0FE; color: #1967D2; font-size: .7rem; }
+.result-type-organic       { background: #E6F4EA; color: #137333; font-size: .7rem; }
+.result-type-site_links    { background: #FCE8E6; color: #C5221F; font-size: .7rem; }
+.result-type-reviews       { background: #FEF7E0; color: #E37400; font-size: .7rem; }
+.result-type-knowledge_graph { background: #F3E8FD; color: #7B1FA2; font-size: .7rem; }
+[class^="result-type-"] { padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+
+/* ── KD badges ── */
+.kd-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: .75rem;
+}
+.kd-easy   { background: #E6F4EA; color: #137333; }
+.kd-medium { background: #FEF7E0; color: #E37400; }
+.kd-hard   { background: #FCE8E6; color: #C5221F; }
+
+/* ── Intent badges ── */
+.intent-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: .7rem;
+  font-weight: 600;
+}
+.intent-i  { background: #E8F0FE; color: #1967D2; }
+.intent-c  { background: #E6F4EA; color: #137333; }
+.intent-t  { background: #FEF7E0; color: #E37400; }
+.intent-n  { background: #F5F5F5; color: #555; }
+
+/* ── Google search simulator ── */
+.google-logo {
+  font-size: 3.5rem;
+  font-family: 'Google Sans', sans-serif;
+  font-weight: 700;
+  line-height: 1;
+}
+.google-search-bar {
+  display: flex;
+  align-items: center;
+  max-width: 580px;
+  border: 1px solid #dfe1e5;
+  border-radius: 24px;
+  padding: 10px 18px;
+  box-shadow: 0 1px 6px rgba(32,33,36,.08);
+  background: #fff;
+  transition: box-shadow .2s;
+}
+.google-search-bar:focus-within {
+  box-shadow: 0 1px 6px rgba(32,33,36,.28);
+  border-color: transparent;
+}
+.google-input {
+  border: none;
+  outline: none;
+  flex: 1;
+  font-size: 1rem;
+  background: transparent;
+  min-width: 0;
+}
+
+/* ── SERP result cards ── */
+.serp-result-card {
+  background: #fff;
+  border: 1px solid #e8eaed;
+  border-radius: 10px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 4px rgba(32,33,36,.06);
+}
+.serp-url-line { font-size: .8rem; color: #202124; margin-bottom: 2px; }
+.serp-domain   { font-weight: 600; }
+.serp-title    { font-size: 1.1rem; font-weight: 500; }
+.serp-title a  { color: #1a0dab; }
+.serp-title a:hover { text-decoration: underline !important; }
+.serp-snippet  { font-size: .88rem; margin-top: 4px; line-height: 1.5; }
+.serp-meta     { font-size: .82rem; }
+
+.serp-position-badge {
+  min-width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: .95rem;
+  flex-shrink: 0;
+}
+
+/* ── AI Overview banner ── */
+.ai-overview-banner {
+  background: linear-gradient(90deg,#E8F0FE,#F3E8FD);
+  color: #1967D2;
+  font-weight: 600;
+  font-size: .82rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* ── SERP chips ── */
+.serp-chip {
+  display: inline-block;
+  background: #F1F3F4;
+  color: #444;
+  font-size: .75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.kd-chip.kd-easy   { background: #E6F4EA; color: #137333; }
+.kd-chip.kd-medium { background: #FEF7E0; color: #E37400; }
+.kd-chip.kd-hard   { background: #FCE8E6; color: #C5221F; }
+.intent-chip.intent-i { background: #E8F0FE; color: #1967D2; }
+.intent-chip.intent-c { background: #E6F4EA; color: #137333; }
+
+/* ── History table row colors ── */
+.history-row-up   { background: rgba(230,244,234,.4); }
+.history-row-down { background: rgba(252,232,230,.4); }
+.history-row-new  { background: rgba(232,240,254,.4); }
+.history-row-lost { background: rgba(254,247,224,.4); }
+
+/* ── Sticky table header ── */
+.sticky-top { top: 0; z-index: 1; }
+
+/* ── Scrollable table ── */
+.table-responsive { max-height: 70vh; overflow-y: auto; }
+
+/* ── Integration icons ── */
+.integration-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; flex-shrink: 0;
+}
+.setup-steps { background: #f8f9fa; border-radius: 8px; padding: 12px 14px; }
+
+/* ── Live SERP result highlight ── */
+.live-result-ours {
+  border-color: #34A853 !important;
+  background: rgba(52,168,83,.04);
+}
+
+/* ── User label chips ── */
+.labels-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  min-height: 22px;
+}
+.label-chip {
+  display: inline-block;
+  background: #4285F4;
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+}
+.label-chip:hover { background: #1a5dc8; }
+
+.btn-label-edit {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: .85rem;
+  line-height: 1;
+  opacity: .5;
+  transition: opacity .15s;
+}
+.btn-label-edit:hover { opacity: 1; }
+
+/* ── Extra small button ── */
+.btn-xs { font-size: .7rem; }

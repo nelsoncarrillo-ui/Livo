@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Histórico — SERP Tracker Brasil{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-3 align-items-center">
+  <div class="col">
+    <h4 class="fw-bold mb-0"><i class="bi bi-clock-history me-2 text-primary"></i>Comparação de datas</h4>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-12 col-sm-6 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Domínio</label>
+        <select name="domain" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for d in domains %}
+          <option value="{{ d }}" {% if d == selected_domain %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-sm-6 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Data anterior</label>
+        <select name="date1" class="form-select form-select-sm">
+          {% for d in dates %}
+          <option value="{{ d }}" {% if d == date1 %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-sm-6 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Data atual</label>
+        <select name="date2" class="form-select form-select-sm">
+          {% for d in dates|reverse %}
+          <option value="{{ d }}" {% if d == date2 %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-sm-6 col-md-4">
+        <label class="form-label small fw-semibold mb-1">Buscar</label>
+        <div class="input-group input-group-sm">
+          <input type="text" name="q" class="form-control" placeholder="filtrar palavra-chave" value="{{ search }}">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i></button>
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-success">
+          <i class="bi bi-arrow-left-right me-1"></i>Comparar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if comparison %}
+<!-- Summary cards -->
+{% set improved = comparison | selectattr('diff', 'greaterthan', 0) | list %}
+{% set declined = comparison | selectattr('diff', 'lessthan', 0) | list %}
+{% set stable   = comparison | selectattr('diff', 'equalto', 0) | list %}
+{% set new_kw   = comparison | selectattr('pos1', 'none') | list %}
+{% set lost_kw  = comparison | selectattr('pos2', 'none') | list %}
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-3 fw-bold text-success">{{ improved|length }}</div>
+      <div class="small text-muted"><i class="bi bi-arrow-up-circle-fill text-success me-1"></i>Melhoraram</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-3 fw-bold text-danger">{{ declined|length }}</div>
+      <div class="small text-muted"><i class="bi bi-arrow-down-circle-fill text-danger me-1"></i>Caíram</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-3 fw-bold text-secondary">{{ stable|length }}</div>
+      <div class="small text-muted"><i class="bi bi-dash-circle-fill text-secondary me-1"></i>Estáveis</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-3 fw-bold text-primary">{{ new_kw|length }}</div>
+      <div class="small text-muted"><i class="bi bi-plus-circle-fill text-primary me-1"></i>Novas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-3 fw-bold text-warning">{{ lost_kw|length }}</div>
+      <div class="small text-muted"><i class="bi bi-x-circle-fill text-warning me-1"></i>Perdidas</div>
+    </div>
+  </div>
+</div>
+
+<!-- Comparison table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold small">{{ comparison|length }} palavras-chave</span>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="badge bg-secondary">{{ date1 }}</span>
+      <i class="bi bi-arrow-right text-muted"></i>
+      <span class="badge bg-primary">{{ date2 }}</span>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 small">
+      <thead class="table-light sticky-top">
+        <tr>
+          <th>Palavra-chave</th>
+          <th class="text-center" style="width:90px">Posição<br><small class="text-muted fw-normal">{{ date1 }}</small></th>
+          <th class="text-center" style="width:90px">Posição<br><small class="text-muted fw-normal">{{ date2 }}</small></th>
+          <th class="text-center" style="width:80px">Variação</th>
+          <th class="text-center" style="width:80px">Vol. Busca</th>
+          <th>Intenção</th>
+          <th>URL destino</th>
+          <th style="width:40px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in comparison %}
+        <tr class="
+          {% if row.pos1 is none %}history-row-new
+          {% elif row.pos2 is none %}history-row-lost
+          {% elif row.diff and row.diff > 0 %}history-row-up
+          {% elif row.diff and row.diff < 0 %}history-row-down
+          {% endif %}
+        ">
+          <td class="fw-semibold">{{ row.keyword }}</td>
+          <td class="text-center">
+            {% if row.pos1 %}
+            <span class="position-badge pos-{{ 'top1' if row.pos1==1 else ('top3' if row.pos1<=3 else ('top10' if row.pos1<=10 else 'other')) }}">
+              {{ row.pos1 }}
+            </span>
+            {% else %}
+            <span class="badge bg-primary-subtle text-primary-emphasis">Nova</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if row.pos2 %}
+            <span class="position-badge pos-{{ 'top1' if row.pos2==1 else ('top3' if row.pos2<=3 else ('top10' if row.pos2<=10 else 'other')) }}">
+              {{ row.pos2 }}
+            </span>
+            {% else %}
+            <span class="badge bg-warning-subtle text-warning-emphasis">Perdida</span>
+            {% endif %}
+          </td>
+          <td class="text-center fw-bold">
+            {% if row.diff is not none %}
+              {% if row.diff > 0 %}
+                <span class="text-success"><i class="bi bi-arrow-up-short"></i>{{ row.diff }}</span>
+              {% elif row.diff < 0 %}
+                <span class="text-danger"><i class="bi bi-arrow-down-short"></i>{{ row.diff|abs }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">{{ '{:,}'.format(row.search_volume) if row.search_volume else '—' }}</td>
+          <td>
+            {% if row.intents %}
+              {% for intent in row.intents.split('|') %}
+              <span class="intent-badge intent-{{ intent.strip() }}">{{ intent.strip() }}</span>
+              {% endfor %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:180px">
+            {% if row.landing_url %}
+            <a href="{{ row.landing_url }}" target="_blank" class="text-muted small text-decoration-none" title="{{ row.landing_url }}">
+              <i class="bi bi-box-arrow-up-right me-1"></i>{{ row.landing_url|replace('https://','') }}
+            </a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('serp', keyword=row.keyword, date=date2) }}"
+               class="btn btn-sm btn-outline-secondary py-0 px-1" title="Ver SERP">
+              <i class="bi bi-search"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% elif date1 and date2 %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-inbox display-5 d-block mb-2"></i>
+  <p>Nenhum dado encontrado para as datas selecionadas.</p>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-arrow-left-right display-5 d-block mb-2"></i>
+  <p>Importe ao menos dois arquivos de datas diferentes para comparar a evolução.</p>
+  <a href="{{ url_for('index') }}" class="btn btn-primary btn-sm mt-2">
+    <i class="bi bi-upload me-1"></i>Importar dados
+  </a>
+</div>
+{% endif %}
+{% endblock %}

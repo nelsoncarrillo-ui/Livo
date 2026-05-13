@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Início — SERP Tracker Brasil{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <h4 class="fw-bold"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h4>
+  </div>
+
+  {% if stats %}
+  <div class="col-6 col-md-3">
+    <div class="card stat-card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="stat-icon text-primary"><i class="bi bi-globe2"></i></div>
+        <div class="stat-value">{{ stats.domain }}</div>
+        <div class="stat-label">Domínio</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="stat-icon text-success"><i class="bi bi-key-fill"></i></div>
+        <div class="stat-value">{{ stats.total }}</div>
+        <div class="stat-label">Palavras-chave</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="stat-icon text-warning"><i class="bi bi-trophy-fill"></i></div>
+        <div class="stat-value">{{ stats.top3 }}</div>
+        <div class="stat-label">Top 3</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <div class="stat-icon text-info"><i class="bi bi-bar-chart-line-fill"></i></div>
+        <div class="stat-value">{{ stats.top10 }}</div>
+        <div class="stat-label">Top 10</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <!-- Upload card -->
+  <div class="col-12 col-lg-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom fw-semibold">
+        <i class="bi bi-cloud-upload-fill me-2 text-primary"></i>Importar arquivo SEMrush
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+          <div class="upload-zone mb-3" id="uploadZone">
+            <i class="bi bi-file-earmark-spreadsheet display-4 text-muted"></i>
+            <p class="mt-2 mb-1 fw-semibold">Arraste o arquivo .xlsx aqui</p>
+            <p class="text-muted small">ou clique para selecionar</p>
+            <input type="file" name="file" id="fileInput" accept=".xlsx,.xls" class="d-none">
+            <div id="fileName" class="mt-2 text-success small fw-semibold"></div>
+          </div>
+          <div class="alert alert-info small py-2 mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Exporte o relatório <strong>Position Tracking → Rankings Overview</strong> do SEMrush como .xlsx e importe aqui.
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-upload me-2"></i>Importar dados
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Imports history -->
+  <div class="col-12 col-lg-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clock-history me-2 text-secondary"></i>Importações realizadas</span>
+        <span class="badge bg-secondary">{{ imports|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if imports %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 small">
+            <thead class="table-light">
+              <tr>
+                <th>Data do relatório</th>
+                <th>Domínio</th>
+                <th class="text-center">Palavras</th>
+                <th>Importado em</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for imp in imports %}
+              <tr>
+                <td><span class="badge bg-primary-subtle text-primary-emphasis fw-semibold">{{ imp.report_date }}</span></td>
+                <td><code class="text-dark">{{ imp.domain }}</code></td>
+                <td class="text-center fw-semibold">{{ imp.keyword_count }}</td>
+                <td class="text-muted">{{ imp.import_date[:16] }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('delete_import', import_id=imp.id) }}"
+                        onsubmit="return confirm('Excluir esta importação?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-inbox display-5 d-block mb-2"></i>
+          <p>Nenhum dado importado ainda.<br>Faça upload de um arquivo SEMrush para começar.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if imports %}
+<div class="row g-3 mt-2">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-bottom fw-semibold">
+        <i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Ações rápidas
+      </div>
+      <div class="card-body d-flex flex-wrap gap-2">
+        <a href="{{ url_for('rankings') }}" class="btn btn-outline-primary">
+          <i class="bi bi-table me-1"></i>Ver todos os rankings
+        </a>
+        <a href="{{ url_for('serp') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-search me-1"></i>Simular SERP
+        </a>
+        {% if imports|length >= 2 %}
+        <a href="{{ url_for('history') }}" class="btn btn-outline-success">
+          <i class="bi bi-arrow-left-right me-1"></i>Comparar datas
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

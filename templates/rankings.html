@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Rankings — SERP Tracker Brasil{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-3 align-items-center">
+  <div class="col">
+    <h4 class="fw-bold mb-0"><i class="bi bi-table me-2 text-primary"></i>Rankings de palavras-chave</h4>
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addKeywordModal">
+      <i class="bi bi-plus-lg me-1"></i>Adicionar palavra-chave
+    </button>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="GET" id="filterForm" class="row g-2 align-items-end">
+      <div class="col-6 col-sm-4 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Data</label>
+        <select name="date" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for d in dates %}
+          <option value="{{ d }}" {% if d == selected_date %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-sm-4 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Domínio</label>
+        <select name="domain" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for d in domains %}
+          <option value="{{ d }}" {% if d == selected_domain %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-sm-4 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Posição</label>
+        <select name="pos" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="all"   {% if pos_filter=='all'   %}selected{% endif %}>Todas</option>
+          <option value="top3"  {% if pos_filter=='top3'  %}selected{% endif %}>Top 3</option>
+          <option value="top10" {% if pos_filter=='top10' %}selected{% endif %}>Top 10</option>
+          <option value="top30" {% if pos_filter=='top30' %}selected{% endif %}>Top 30</option>
+        </select>
+      </div>
+      <div class="col-6 col-sm-4 col-md-2">
+        <label class="form-label small fw-semibold mb-1">Etiqueta</label>
+        <select name="tag" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for lbl in all_labels %}
+          <option value="{{ lbl }}" {% if lbl == tag_filter %}selected{% endif %}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-sm-8 col-md-4">
+        <label class="form-label small fw-semibold mb-1">Buscar</label>
+        <div class="input-group input-group-sm">
+          <input type="text" name="q" class="form-control" placeholder="ex: lente de contato" value="{{ search }}">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i></button>
+          {% if search or tag_filter %}
+          <a href="{{ url_for('rankings', date=selected_date, domain=selected_domain) }}" class="btn btn-outline-secondary" title="Limpar filtros">
+            <i class="bi bi-x-lg"></i>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Active label filter pill -->
+{% if tag_filter %}
+<div class="mb-2">
+  <span class="badge rounded-pill bg-primary me-1">
+    <i class="bi bi-tag-fill me-1"></i>{{ tag_filter }}
+    <a href="{{ url_for('rankings', date=selected_date, domain=selected_domain, q=search, pos=pos_filter) }}"
+       class="text-white ms-1 text-decoration-none">×</a>
+  </span>
+  <small class="text-muted">{{ rows|length }} resultado(s)</small>
+</div>
+{% endif %}
+
+<!-- Table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold small">{{ rows|length }} resultado(s)</span>
+    <span class="text-muted small">{{ selected_domain }} — {{ selected_date }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 small">
+      <thead class="table-light sticky-top">
+        <tr>
+          <th style="width:36px">#</th>
+          <th>Palavra-chave</th>
+          <th style="width:100px">Etiquetas</th>
+          <th class="text-center" style="width:70px">Posição</th>
+          <th class="text-center" style="width:70px">Variação</th>
+          <th>Tipo</th>
+          <th class="text-center" style="width:80px">Vol. Busca</th>
+          <th class="text-center" style="width:55px">KD</th>
+          <th class="text-center" style="width:60px">CPC</th>
+          <th>Intenção</th>
+          <th>URL de destino</th>
+          <th style="width:70px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr id="row-{{ row.id }}">
+          <td class="text-muted">{{ loop.index }}</td>
+          <td>
+            <span class="fw-semibold">{{ row.keyword }}</span>
+            {% if row.is_manual %}<span class="badge bg-info-subtle text-info-emphasis ms-1" title="Adicionado manualmente">manual</span>{% endif %}
+          </td>
+
+          <!-- User labels cell -->
+          <td>
+            <div class="labels-display" id="labels-{{ row.id }}">
+              {% if row.user_labels %}
+                {% for lbl in row.user_labels.split(',') %}
+                  {% if lbl.strip() %}
+                  <span class="label-chip" onclick="filterByLabel('{{ lbl.strip() }}')">{{ lbl.strip() }}</span>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+              <button class="btn-label-edit" onclick="openLabelModal('{{ row.id }}', '{{ row.keyword|e }}', '{{ row.user_labels|e }}', '{{ selected_domain }}')" title="Editar etiquetas">
+                <i class="bi bi-tag{% if not row.user_labels %}-fill{% endif %} text-muted"></i>
+              </button>
+            </div>
+          </td>
+
+          <td class="text-center">
+            <span class="position-badge pos-{{ 'top1' if row.position == 1 else ('top3' if row.position and row.position <= 3 else ('top10' if row.position and row.position <= 10 else 'other')) }}">
+              {{ row.position if row.position else '—' }}
+            </span>
+          </td>
+          <td class="text-center">
+            {% if row.position_diff is not none and row.position_diff != 0 %}
+              {% if row.position_diff > 0 %}
+                <span class="text-success fw-bold"><i class="bi bi-arrow-up-short"></i>{{ row.position_diff }}</span>
+              {% else %}
+                <span class="text-danger fw-bold"><i class="bi bi-arrow-down-short"></i>{{ row.position_diff|abs }}</span>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.result_type %}
+            <span class="badge result-type-{{ row.result_type|replace(' ','_') }}">{{ row.result_type }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">{{ '{:,}'.format(row.search_volume) if row.search_volume else '—' }}</td>
+          <td class="text-center">
+            {% if row.keyword_difficulty %}
+            <span class="kd-badge kd-{{ 'easy' if row.keyword_difficulty < 30 else ('medium' if row.keyword_difficulty < 60 else 'hard') }}">
+              {{ row.keyword_difficulty }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">{{ 'R$'~row.cpc if row.cpc else '—' }}</td>
+          <td>
+            {% if row.intents %}
+              {% for intent in row.intents.split('|') %}
+                <span class="intent-badge intent-{{ intent.strip() }}">{{ intent.strip() }}</span>
+              {% endfor %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:180px">
+            {% if row.landing_url %}
+            <a href="{{ row.landing_url }}" target="_blank" class="text-decoration-none small text-muted" title="{{ row.landing_url }}">
+              <i class="bi bi-box-arrow-up-right me-1"></i>{{ row.landing_url|replace('https://','') }}
+            </a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="{{ url_for('serp', keyword=row.keyword, date=selected_date) }}"
+                 class="btn btn-sm btn-outline-secondary py-0 px-1" title="Ver SERP">
+                <i class="bi bi-search"></i>
+              </a>
+              <form method="POST" action="{{ url_for('keyword_delete', ranking_id=row.id) }}"
+                    onsubmit="return confirm('Excluir «{{ row.keyword }}» desta data?')">
+                <input type="hidden" name="return_date" value="{{ selected_date }}">
+                <input type="hidden" name="return_domain" value="{{ selected_domain }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="Excluir">
+                  <i class="bi bi-trash3"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="12" class="text-center text-muted py-5">
+            <i class="bi bi-inbox display-5 d-block mb-2"></i>
+            Nenhuma palavra-chave encontrada.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Modal: Edit labels ── -->
+<div class="modal fade" id="labelModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-tags-fill me-1 text-primary"></i>Editar etiquetas</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pb-2">
+        <p class="small text-muted mb-2" id="labelKeywordName"></p>
+        <label class="form-label small fw-semibold">Etiquetas <span class="fw-normal text-muted">(separadas por vírgula)</span></label>
+        <input type="text" id="labelInput" class="form-control form-control-sm"
+               placeholder="ex: produto, marca, blog"
+               list="labelSuggestions" autocomplete="off">
+        <datalist id="labelSuggestions">
+          {% for lbl in all_labels %}
+          <option value="{{ lbl }}">
+          {% endfor %}
+        </datalist>
+        <!-- Quick-add existing labels -->
+        {% if all_labels %}
+        <div class="mt-2 d-flex flex-wrap gap-1">
+          {% for lbl in all_labels %}
+          <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-2 small"
+                  onclick="toggleQuickLabel('{{ lbl }}')">{{ lbl }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="saveLabels()">
+          <i class="bi bi-check-lg me-1"></i>Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Add keyword manually ── -->
+<div class="modal fade" id="addKeywordModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-plus-circle-fill me-1 text-success"></i>Adicionar palavra-chave</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('keyword_add') }}">
+        <div class="modal-body">
+          <input type="hidden" name="domain" value="{{ selected_domain }}">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Palavra-chave *</label>
+              <input type="text" name="keyword" class="form-control form-control-sm" required placeholder="ex: óculos de sol masculino">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Data *</label>
+              <select name="report_date" class="form-select form-select-sm" required>
+                {% for d in dates %}
+                <option value="{{ d }}" {% if d == selected_date %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Posição</label>
+              <input type="number" name="position" class="form-control form-control-sm" min="1" max="200" placeholder="ex: 5">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">URL de destino</label>
+              <input type="url" name="landing_url" class="form-control form-control-sm" placeholder="https://...">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Volume de busca</label>
+              <input type="number" name="search_volume" class="form-control form-control-sm" min="0" placeholder="ex: 1000">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Etiquetas</label>
+              <input type="text" name="labels" class="form-control form-control-sm"
+                     placeholder="ex: produto, marca" list="labelSuggestions2" autocomplete="off">
+              <datalist id="labelSuggestions2">
+                {% for lbl in all_labels %}
+                <option value="{{ lbl }}">
+                {% endfor %}
+              </datalist>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-plus-lg me-1"></i>Adicionar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // State for label editing
+  let _labelRowId = null;
+  let _labelKeyword = null;
+  let _labelDomain = null;
+
+  function openLabelModal(rowId, keyword, currentLabels, domain) {
+    _labelRowId = rowId;
+    _labelKeyword = keyword;
+    _labelDomain = domain;
+    document.getElementById('labelKeywordName').textContent = keyword;
+    document.getElementById('labelInput').value = currentLabels || '';
+    new bootstrap.Modal(document.getElementById('labelModal')).show();
+  }
+
+  function toggleQuickLabel(label) {
+    const input = document.getElementById('labelInput');
+    const parts = input.value.split(',').map(s => s.trim()).filter(Boolean);
+    const idx = parts.indexOf(label);
+    if (idx >= 0) parts.splice(idx, 1); else parts.push(label);
+    input.value = parts.join(', ');
+  }
+
+  function saveLabels() {
+    const labels = document.getElementById('labelInput').value;
+    fetch('/api/keyword/labels', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({domain: _labelDomain, keyword: _labelKeyword, labels})
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) { alert('Erro ao salvar: ' + data.error); return; }
+      // Update the chips in the row without reloading
+      const cell = document.getElementById('labels-' + _labelRowId);
+      if (cell) {
+        // Remove old chips
+        cell.querySelectorAll('.label-chip').forEach(el => el.remove());
+        // Insert new chips before the edit button
+        const btn = cell.querySelector('.btn-label-edit');
+        (data.labels || '').split(',').filter(Boolean).forEach(lbl => {
+          const chip = document.createElement('span');
+          chip.className = 'label-chip';
+          chip.textContent = lbl.trim();
+          chip.onclick = () => filterByLabel(lbl.trim());
+          cell.insertBefore(chip, btn);
+        });
+      }
+      bootstrap.Modal.getInstance(document.getElementById('labelModal')).hide();
+    });
+  }
+
+  function filterByLabel(label) {
+    const form = document.getElementById('filterForm');
+    form.querySelector('[name=tag]').value = label;
+    form.submit();
+  }
+</script>
+{% endblock %}

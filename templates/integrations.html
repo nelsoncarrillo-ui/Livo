@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}Integrações — SERP Tracker Brasil{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col">
+    <h4 class="fw-bold mb-0"><i class="bi bi-plug-fill me-2 text-primary"></i>Integrações</h4>
+    <p class="text-muted small mt-1">Conecte fontes de dados reais para substituir o SEMrush.</p>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- ── SerpAPI ──────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon bg-warning-subtle text-warning">
+          <i class="bi bi-google"></i>
+        </div>
+        <div>
+          <div class="fw-bold">SerpAPI</div>
+          <div class="small text-muted">Busca em tempo real no Google Brasil</div>
+        </div>
+        {% if settings.serpapi_key %}
+        <span class="badge bg-success ms-auto">Configurado</span>
+        {% else %}
+        <span class="badge bg-secondary ms-auto">Não configurado</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+
+        <div class="alert alert-info small py-2 mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          SerpAPI faz buscas reais no Google para <strong>qualquer keyword</strong> — não precisa ser seu domínio.
+          Crie uma conta em <a href="https://serpapi.com" target="_blank" class="alert-link">serpapi.com</a>
+          (plano gratuito: 100 buscas/mês).
+        </div>
+
+        <form method="POST" action="{{ url_for('serpapi_save_key') }}">
+          <label class="form-label small fw-semibold">Chave de API</label>
+          <div class="input-group mb-3">
+            <input type="password" name="serpapi_key" id="serpApiKey"
+                   class="form-control form-control-sm"
+                   value="{{ settings.serpapi_key or '' }}"
+                   placeholder="Cole sua API key aqui">
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    onclick="toggleVis('serpApiKey',this)">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+          <button type="submit" class="btn btn-warning btn-sm w-100">
+            <i class="bi bi-save me-1"></i>Salvar chave
+          </button>
+        </form>
+
+        {% if settings.serpapi_key %}
+        <hr class="my-3">
+        <div class="fw-semibold small mb-2">Testar busca</div>
+        <div class="input-group input-group-sm mb-2">
+          <input type="text" id="testKeyword" class="form-control" placeholder="ex: óculos de sol">
+          <button class="btn btn-outline-warning" onclick="testSerpApi()">
+            <i class="bi bi-search me-1"></i>Buscar
+          </button>
+        </div>
+        <div id="testResult" class="small text-muted"></div>
+        {% endif %}
+
+        <hr class="my-3">
+        <div class="small text-muted">
+          <strong>Como usar:</strong> No <a href="{{ url_for('serp') }}">Simulador SERP</a>,
+          ao pesquisar uma keyword aparecerá o botão
+          <span class="badge bg-warning text-dark"><i class="bi bi-broadcast me-1"></i>Buscar ao vivo</span>
+          para ver os resultados reais do Google.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Google Search Console ────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon bg-success-subtle text-success">
+          <i class="bi bi-bar-chart-line-fill"></i>
+        </div>
+        <div>
+          <div class="fw-bold">Google Search Console</div>
+          <div class="small text-muted">Dados oficiais do Google — grátis</div>
+        </div>
+        {% if gsc_connected %}
+        <span class="badge bg-success ms-auto">Conectado</span>
+        {% elif gsc_has_creds %}
+        <span class="badge bg-warning text-dark ms-auto">Credenciais OK</span>
+        {% else %}
+        <span class="badge bg-secondary ms-auto">Não configurado</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+
+        <!-- Step 1: Instructions -->
+        <div class="setup-steps mb-3">
+          <div class="fw-semibold small mb-2"><i class="bi bi-list-ol me-1"></i>Como configurar (1 única vez):</div>
+          <ol class="small text-muted ps-3 mb-0">
+            <li>Acesse <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a></li>
+            <li>Crie um projeto → Ative a <strong>Search Console API</strong></li>
+            <li>Vá em <strong>APIs e Serviços → Credenciais</strong></li>
+            <li>Crie <strong>IDs do cliente OAuth 2.0</strong> tipo <strong>Aplicativo da Web</strong></li>
+            <li>Em "URIs de redirecionamento" adicione: <code class="user-select-all">http://localhost:5000/gsc/callback</code></li>
+            <li>Baixe o JSON e faça upload abaixo</li>
+          </ol>
+        </div>
+
+        <!-- Step 2: Upload credentials -->
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">
+            {% if gsc_has_creds %}<i class="bi bi-check-circle-fill text-success me-1"></i>{% endif %}
+            Arquivo de credenciais (client_secret...json)
+          </label>
+          <form method="POST" action="{{ url_for('gsc_upload_credentials') }}" enctype="multipart/form-data">
+            <div class="input-group input-group-sm">
+              <input type="file" name="credentials_file" class="form-control" accept=".json" required>
+              <button type="submit" class="btn btn-outline-secondary">
+                <i class="bi bi-upload me-1"></i>Upload
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Step 3: OAuth -->
+        <div class="mb-3">
+          {% if not gsc_connected %}
+          <a href="{{ url_for('gsc_auth') }}"
+             class="btn btn-success btn-sm w-100 {% if not gsc_has_creds %}disabled{% endif %}">
+            <i class="bi bi-google me-1"></i>Conectar com Google
+          </a>
+          {% else %}
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('gsc_auth') }}" class="btn btn-outline-success btn-sm flex-grow-1">
+              <i class="bi bi-arrow-clockwise me-1"></i>Reconectar
+            </a>
+            <form method="POST" action="{{ url_for('gsc_disconnect') }}" class="flex-shrink-0">
+              <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-x-circle me-1"></i>Desconectar
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Step 4: Fetch data -->
+        {% if gsc_connected %}
+        <hr class="my-3">
+        <div class="fw-semibold small mb-2"><i class="bi bi-cloud-download me-1"></i>Importar dados</div>
+        <form method="POST" action="{{ url_for('gsc_fetch') }}">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Site</label>
+            <select name="site_url" class="form-select form-select-sm" required>
+              {% for site in gsc_sites %}
+              <option value="{{ site }}">{{ site }}</option>
+              {% endfor %}
+              {% if not gsc_sites %}
+              <option value="">Nenhum site encontrado</option>
+              {% endif %}
+            </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Data início</label>
+              <input type="date" name="start_date" class="form-control form-control-sm"
+                     value="{{ (today - 28)|strftime if today else '' }}"
+                     id="gscStartDate" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Data fim</label>
+              <input type="date" name="end_date" class="form-control form-control-sm"
+                     value="{{ today }}"
+                     id="gscEndDate" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Máx. palavras-chave</label>
+            <select name="row_limit" class="form-select form-select-sm">
+              <option value="500">500</option>
+              <option value="1000" selected>1.000</option>
+              <option value="5000">5.000</option>
+              <option value="25000">25.000 (máximo)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-success btn-sm w-100" {% if not gsc_sites %}disabled{% endif %}>
+            <i class="bi bi-download me-1"></i>Importar do Search Console
+          </button>
+        </form>
+        <div class="mt-2 small text-muted">
+          <i class="bi bi-info-circle me-1"></i>Os dados ficam salvos localmente com a data selecionada.
+          Você pode comparar datas no <a href="{{ url_for('history') }}">Histórico</a>.
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Comparison table -->
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-bottom fw-semibold small py-2">
+        <i class="bi bi-table me-2 text-secondary"></i>Comparação das fontes de dados
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th>Característica</th>
+              <th class="text-center">SEMrush (.xlsx)</th>
+              <th class="text-center">SerpAPI</th>
+              <th class="text-center">Search Console</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Custo</td><td class="text-center">Pago (SEMrush)</td><td class="text-center">100 buscas/mês grátis</td><td class="text-center text-success fw-bold">100% grátis</td></tr>
+            <tr><td>Posição real do Google</td><td class="text-center"><i class="bi bi-dash text-muted"></i> Estimada</td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i></td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i></td></tr>
+            <tr><td>Qualquer domínio</td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i></td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i></td><td class="text-center"><i class="bi bi-x-circle-fill text-danger"></i> Só o seu</td></tr>
+            <tr><td>Atualização automática</td><td class="text-center"><i class="bi bi-x-circle-fill text-danger"></i></td><td class="text-center"><i class="bi bi-x-circle-fill text-danger"></i> Manual</td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i> Diária</td></tr>
+            <tr><td>Volume de busca / KD</td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i></td><td class="text-center"><i class="bi bi-dash text-muted"></i></td><td class="text-center"><i class="bi bi-dash text-muted"></i></td></tr>
+            <tr><td>Clicks / Impressões</td><td class="text-center"><i class="bi bi-x-circle-fill text-danger"></i></td><td class="text-center"><i class="bi bi-x-circle-fill text-danger"></i></td><td class="text-center"><i class="bi bi-check-circle-fill text-success"></i></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Set default dates for GSC form
+  const today = new Date();
+  const fmt = d => d.toISOString().split('T')[0];
+  const startEl = document.getElementById('gscStartDate');
+  const endEl   = document.getElementById('gscEndDate');
+  if (startEl && !startEl.value) {
+    const d28 = new Date(today); d28.setDate(d28.getDate() - 28);
+    startEl.value = fmt(d28);
+  }
+  if (endEl && !endEl.value) {
+    const d2 = new Date(today); d2.setDate(d2.getDate() - 2);
+    endEl.value = fmt(d2);
+  }
+
+  function toggleVis(id, btn) {
+    const el = document.getElementById(id);
+    el.type = el.type === 'password' ? 'text' : 'password';
+    btn.innerHTML = el.type === 'password' ? '<i class="bi bi-eye"></i>' : '<i class="bi bi-eye-slash"></i>';
+  }
+
+  function testSerpApi() {
+    const kw = document.getElementById('testKeyword').value.trim();
+    const out = document.getElementById('testResult');
+    if (!kw) return;
+    out.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Buscando...';
+    fetch(`/api/serpapi/search?keyword=${encodeURIComponent(kw)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { out.innerHTML = `<span class="text-danger">${data.error}</span>`; return; }
+        const pos = data.our_position ? `#${data.our_position}` : 'não encontrado no top 20';
+        out.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i>
+          API funcionando! <strong>${data.results.length}</strong> resultados encontrados.
+          Créditos usados: <strong>${data.credits_used ?? '?'}</strong>.`;
+      })
+      .catch(e => { out.innerHTML = `<span class="text-danger">Erro: ${e.message}</span>`; });
+  }
+</script>
+{% endblock %}
