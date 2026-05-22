@@ -1,0 +1,28 @@
+# Database
+rankings.db
+
+# Config (API keys y tokens OAuth — nunca subir al repo)
+config/settings.json
+config/gsc_credentials.json
+config/gsc_token.json
+
+# Uploaded files
+uploads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Next.js (archivos de build del Local Rank Tracker standalone)
+.next/
+node_modules/
+.env.local
+.env.local.example

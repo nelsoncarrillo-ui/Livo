@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Mapa de Ranking Local · SERP Tracker{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  #rank-map {
+    height: calc(100vh - 220px);
+    min-height: 420px;
+    border-radius: .5rem;
+    background: #111;
+  }
+  .rank-bubble {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%;
+    color: #fff; font-weight: 700; font-size: 14px;
+    border: 2.5px solid rgba(255,255,255,.85);
+    box-shadow: 0 2px 8px rgba(0,0,0,.45);
+    font-family: system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .leaflet-tooltip.rank-tip {
+    background: #1e293b; border: 1px solid #334155;
+    color: #f1f5f9; font-size: 12px; border-radius: 6px;
+    padding: 6px 10px; box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  }
+  .leaflet-tooltip.rank-tip::before { display: none; }
+  #spinner-overlay {
+    position: absolute; inset: 0; z-index: 999;
+    background: rgba(0,0,0,.6);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    border-radius: .5rem;
+  }
+</style>
+
+<div class="row g-3">
+  <!-- Sidebar -->
+  <div class="col-12 col-lg-3">
+    <div class="card bg-dark text-white border-secondary h-100">
+      <div class="card-header border-secondary d-flex align-items-center gap-2">
+        <i class="bi bi-map-fill text-primary"></i>
+        <strong>Mapa de Ranking Local</strong>
+      </div>
+      <div class="card-body">
+        <form id="rank-form" class="mb-3">
+          <div class="mb-3">
+            <label class="form-label small text-secondary">Keyword</label>
+            <input type="text" id="f-keyword" class="form-control form-control-sm bg-dark border-secondary text-white"
+              placeholder="ex: dentista, pizzaria..." required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-secondary">Nome do negócio</label>
+            <input type="text" id="f-business" class="form-control form-control-sm bg-dark border-secondary text-white"
+              placeholder="ex: Clínica Dental García" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-secondary">Localização central</label>
+            <input type="text" id="f-location" class="form-control form-control-sm bg-dark border-secondary text-white"
+              placeholder="ex: São Paulo, Brasil" required>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small text-secondary">Grid</label>
+              <select id="f-grid" class="form-select form-select-sm bg-dark border-secondary text-white">
+                <option value="3">3×3 (9 pts)</option>
+                <option value="5" selected>5×5 (25 pts)</option>
+                <option value="7">7×7 (49 pts)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small text-secondary">Espaçamento</label>
+              <select id="f-spacing" class="form-select form-select-sm bg-dark border-secondary text-white">
+                <option value="0.5">0.5 km</option>
+                <option value="1" selected>1 km</option>
+                <option value="2">2 km</option>
+                <option value="5">5 km</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" id="btn-analyze" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-search me-1"></i>Analisar Rankings
+          </button>
+        </form>
+
+        <!-- Alert -->
+        <div id="alert-box" class="d-none"></div>
+
+        <!-- Demo badge -->
+        <div id="demo-badge" class="d-none alert alert-warning py-2 px-3 small mb-3">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <strong>Modo demo</strong> — dados simulados.<br>
+          Adicione sua <code>serpapi_key</code> em <a href="/integrations" class="alert-link">Integrações</a>.
+        </div>
+
+        <!-- Legend -->
+        <div id="legend" class="d-none">
+          <h6 class="small text-secondary text-uppercase mb-2">Legenda</h6>
+          <div class="d-flex flex-column gap-2 mb-3">
+            <div class="d-flex align-items-center gap-2">
+              <div class="rank-bubble flex-shrink-0" style="background:#22c55e;width:28px;height:28px;font-size:11px">3</div>
+              <span class="small text-white">Top 3 — Excelente</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="rank-bubble flex-shrink-0" style="background:#f59e0b;width:28px;height:28px;font-size:11px">7</div>
+              <span class="small text-white">Top 4–10 — Bom</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="rank-bubble flex-shrink-0" style="background:#ef4444;width:28px;height:28px;font-size:11px">15</div>
+              <span class="small text-white">Top 11–20 — Baixo</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="rank-bubble flex-shrink-0" style="background:#6b7280;width:28px;height:28px;font-size:11px">+</div>
+              <span class="small text-white">Não encontrado</span>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <h6 class="small text-secondary text-uppercase mb-2">Resultados</h6>
+          <div class="row g-2 text-center">
+            <div class="col-4">
+              <div class="bg-secondary bg-opacity-25 rounded p-2">
+                <div id="stat-top3" class="fs-5 fw-bold text-success">—</div>
+                <div class="small text-secondary">Top 3</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="bg-secondary bg-opacity-25 rounded p-2">
+                <div id="stat-top10" class="fs-5 fw-bold text-warning">—</div>
+                <div class="small text-secondary">Top 10</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="bg-secondary bg-opacity-25 rounded p-2">
+                <div id="stat-none" class="fs-5 fw-bold text-secondary">—</div>
+                <div class="small text-secondary">Sem pos.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div class="col-12 col-lg-9">
+    <div class="position-relative">
+      <div id="spinner-overlay" class="d-none">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <p class="text-white fw-semibold mb-1">Analisando rankings...</p>
+        <p class="text-secondary small">Isso pode demorar alguns segundos</p>
+      </div>
+      <div id="rank-map"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Init map
+  const map = L.map('rank-map', { zoomControl: true }).setView([-23.5505, -46.6333], 12);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>',
+    maxZoom: 20,
+  }).addTo(map);
+
+  let markersLayer = L.layerGroup().addTo(map);
+
+  function rankColor(rank) {
+    if (!rank) return '#6b7280';
+    if (rank <= 3) return '#22c55e';
+    if (rank <= 10) return '#f59e0b';
+    return '#ef4444';
+  }
+
+  function makeIcon(rank) {
+    const color = rankColor(rank);
+    const label = rank ? String(rank) : '+';
+    return L.divIcon({
+      className: '',
+      html: `<div class="rank-bubble" style="background:${color}">${label}</div>`,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
+      tooltipAnchor: [0, -22],
+    });
+  }
+
+  function renderPoints(points) {
+    markersLayer.clearLayers();
+    const bounds = [];
+
+    points.forEach(pt => {
+      const marker = L.marker([pt.lat, pt.lng], { icon: makeIcon(pt.rank) });
+      const rankLabel = pt.rank ? `<strong style="color:${rankColor(pt.rank)}">#${pt.rank}</strong>` : '<strong style="color:#9ca3af">Não encontrado</strong>';
+      marker.bindTooltip(
+        `<div>${rankLabel}</div><div style="color:#94a3b8;font-size:11px;margin-top:2px">${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}</div>`,
+        { direction: 'top', className: 'rank-tip', offset: [0, -4] }
+      );
+      marker.addTo(markersLayer);
+      bounds.push([pt.lat, pt.lng]);
+    });
+
+    if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+  }
+
+  function showAlert(msg, type = 'danger') {
+    const box = document.getElementById('alert-box');
+    box.className = `alert alert-${type} py-2 px-3 small`;
+    box.textContent = msg;
+  }
+
+  function hideAlert() {
+    document.getElementById('alert-box').className = 'd-none';
+  }
+
+  document.getElementById('rank-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideAlert();
+
+    const keyword  = document.getElementById('f-keyword').value.trim();
+    const business = document.getElementById('f-business').value.trim();
+    const location = document.getElementById('f-location').value.trim();
+    const gridSize = parseInt(document.getElementById('f-grid').value);
+    const spacing  = parseFloat(document.getElementById('f-spacing').value);
+
+    // Show spinner
+    document.getElementById('spinner-overlay').classList.remove('d-none');
+    document.getElementById('btn-analyze').disabled = true;
+    document.getElementById('legend').classList.add('d-none');
+    document.getElementById('demo-badge').classList.add('d-none');
+
+    try {
+      // Step 1: Geocode
+      const geoRes = await fetch(`/api/local-rank/geocode?location=${encodeURIComponent(location)}`);
+      const geo = await geoRes.json();
+      if (!geoRes.ok) throw new Error(geo.error || 'Localização não encontrada');
+
+      map.setView([geo.lat, geo.lng], 13);
+
+      // Step 2: Analyze
+      const rankRes = await fetch('/api/local-rank/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword, businessName: business,
+          centerLat: geo.lat, centerLng: geo.lng,
+          gridSize, spacingKm: spacing,
+        }),
+      });
+      const data = await rankRes.json();
+      if (!rankRes.ok) throw new Error(data.error || 'Erro ao analisar');
+
+      renderPoints(data.points);
+
+      // Stats
+      const top3  = data.points.filter(p => p.rank && p.rank <= 3).length;
+      const top10 = data.points.filter(p => p.rank && p.rank <= 10).length;
+      const none  = data.points.filter(p => !p.rank).length;
+      document.getElementById('stat-top3').textContent  = top3;
+      document.getElementById('stat-top10').textContent = top10;
+      document.getElementById('stat-none').textContent  = none;
+      document.getElementById('legend').classList.remove('d-none');
+
+      if (data.isDemo) document.getElementById('demo-badge').classList.remove('d-none');
+
+    } catch (err) {
+      showAlert(err.message);
+    } finally {
+      document.getElementById('spinner-overlay').classList.add('d-none');
+      document.getElementById('btn-analyze').disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

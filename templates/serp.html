@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}Simulador SERP — SERP Tracker Brasil{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-9">
+
+    <!-- Google-style search bar -->
+    <div class="text-center mb-4">
+      <div class="google-logo mb-3">
+        <span style="color:#4285F4">G</span><span style="color:#EA4335">o</span><span style="color:#FBBC05">o</span><span style="color:#4285F4">g</span><span style="color:#34A853">l</span><span style="color:#EA4335">e</span>
+        <small class="text-muted ms-2" style="font-size:.5em;vertical-align:middle">Brasil</small>
+      </div>
+
+      <form method="GET" id="serpForm">
+        <input type="hidden" name="date" value="{{ selected_date }}">
+        <div class="google-search-bar mx-auto">
+          <i class="bi bi-search text-muted me-2"></i>
+          <input type="text" name="keyword" id="serpInput" value="{{ keyword }}"
+                 class="google-input" placeholder="Pesquisar no Google"
+                 list="keywordSuggestions" autocomplete="off">
+          <datalist id="keywordSuggestions">
+            {% for kw in top_keywords %}<option value="{{ kw.keyword }}">{% endfor %}
+          </datalist>
+          <button type="submit" class="btn btn-sm btn-outline-secondary ms-2 px-3">
+            Pesquisa Google
+          </button>
+        </div>
+      </form>
+
+      <!-- Controls row -->
+      <div class="d-flex justify-content-center flex-wrap gap-3 mt-2 align-items-center">
+        {% if dates %}
+        <form method="GET" class="d-inline-flex align-items-center gap-2">
+          <input type="hidden" name="keyword" value="{{ keyword }}">
+          <small class="text-muted">Snapshot:</small>
+          <select name="date" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            {% for d in dates %}
+            <option value="{{ d }}" {% if d == selected_date %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+
+        {% if has_serpapi and keyword %}
+        <div class="d-flex align-items-center gap-2">
+          <small class="text-muted">Domínio:</small>
+          <select id="liveDomain" class="form-select form-select-sm w-auto">
+            {% for d in domains %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+            <option value="">— nenhum —</option>
+          </select>
+          <button class="btn btn-sm btn-warning fw-semibold" onclick="runLiveSearch()">
+            <i class="bi bi-broadcast me-1"></i>Buscar ao vivo
+          </button>
+        </div>
+        {% elif not has_serpapi and keyword %}
+        <small class="text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          Configure <a href="{{ url_for('integrations') }}">SerpAPI</a> para buscas em tempo real.
+        </small>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── LIVE results panel (SerpAPI) ──────────────────────── -->
+    <div id="livePanel" class="d-none mb-4">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="badge bg-warning text-dark"><i class="bi bi-broadcast me-1"></i>Ao vivo — Google Brasil</span>
+        <span id="liveMeta" class="text-muted small"></span>
+        <button class="btn btn-xs btn-outline-secondary ms-auto" onclick="saveLiveResults()">
+          <i class="bi bi-floppy me-1"></i>Salvar no histórico
+        </button>
+      </div>
+      <div id="liveResults"></div>
+      <div id="liveSpinner" class="text-center py-5 d-none">
+        <div class="spinner-border text-warning" role="status"></div>
+        <div class="text-muted small mt-2">Buscando no Google Brasil...</div>
+      </div>
+    </div>
+
+    <!-- ── Snapshot results (DB) ─────────────────────────────── -->
+    {% if keyword %}
+      {% if results %}
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="badge bg-secondary"><i class="bi bi-database me-1"></i>Snapshot — {{ selected_date }}</span>
+        <span class="text-muted small">{{ results|length }} registro(s)</span>
+      </div>
+
+        {% for r in results %}
+        <div class="serp-result-card mb-3">
+          {% if r.result_type == 'ai overview' %}
+          <div class="ai-overview-banner mb-2">
+            <i class="bi bi-stars me-1"></i>Visão geral de IA
+          </div>
+          {% endif %}
+
+          <div class="d-flex align-items-start gap-3">
+            <div class="serp-position-badge pos-{{ 'top1' if r.position == 1 else ('top3' if r.position and r.position <= 3 else ('top10' if r.position and r.position <= 10 else 'other')) }}">
+              #{{ r.position if r.position else '?' }}
+            </div>
+
+            <div class="flex-grow-1">
+              {% if r.landing_url %}
+              <div class="serp-url-line">
+                <span class="serp-domain">{{ r.domain }}</span>
+                <span class="text-muted mx-1">›</span>
+                <span class="text-muted small">{{ r.landing_url|replace('https://','') }}</span>
+              </div>
+              {% endif %}
+
+              <div class="serp-title">
+                <a href="{{ r.landing_url or '#' }}" target="_blank" class="text-decoration-none">
+                  {{ r.keyword|title }}
+                  {% if r.result_type == 'site links' %}
+                    <span class="badge bg-info-subtle text-info-emphasis ms-1 small">Sitelinks</span>
+                  {% elif r.result_type == 'reviews' %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis ms-1 small">Reviews</span>
+                  {% elif r.result_type == 'knowledge graph' %}
+                    <span class="badge bg-success-subtle text-success-emphasis ms-1 small">Knowledge Graph</span>
+                  {% endif %}
+                </a>
+              </div>
+
+              <div class="serp-snippet text-muted">{{ r.landing_url or 'Sem URL' }}</div>
+
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                {% if r.search_volume %}
+                <span class="serp-chip"><i class="bi bi-bar-chart-fill me-1"></i>{{ '{:,}'.format(r.search_volume) }}/mês</span>
+                {% endif %}
+                {% if r.cpc %}
+                <span class="serp-chip"><i class="bi bi-currency-dollar me-1"></i>CPC R${{ r.cpc }}</span>
+                {% endif %}
+                {% if r.keyword_difficulty %}
+                <span class="serp-chip kd-chip kd-{{ 'easy' if r.keyword_difficulty < 30 else ('medium' if r.keyword_difficulty < 60 else 'hard') }}">
+                  KD {{ r.keyword_difficulty }}
+                </span>
+                {% endif %}
+                {% if r.intents %}
+                  {% for intent in r.intents.split('|') %}
+                  <span class="serp-chip intent-chip intent-{{ intent.strip() }}">{{ intent.strip()|upper }}</span>
+                  {% endfor %}
+                {% endif %}
+                {% if r.user_labels %}
+                  {% for lbl in r.user_labels.split(',') %}
+                  <span class="serp-chip" style="background:#4285F4;color:#fff">{{ lbl.strip() }}</span>
+                  {% endfor %}
+                {% endif %}
+                {% if r.position_diff is not none %}
+                  {% if r.position_diff > 0 %}
+                  <span class="serp-chip text-success"><i class="bi bi-arrow-up-short"></i>Subiu {{ r.position_diff }}</span>
+                  {% elif r.position_diff < 0 %}
+                  <span class="serp-chip text-danger"><i class="bi bi-arrow-down-short"></i>Caiu {{ r.position_diff|abs }}</span>
+                  {% else %}
+                  <span class="serp-chip text-muted">Sem variação</span>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+
+        <!-- Trend chart -->
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-white small fw-semibold border-bottom">
+            <i class="bi bi-graph-up-arrow me-2 text-primary"></i>Evolução da posição — <em>{{ keyword }}</em>
+          </div>
+          <div class="card-body">
+            <canvas id="trendChart" height="80"></canvas>
+          </div>
+        </div>
+
+      {% else %}
+        <div class="serp-no-results text-center py-4">
+          <i class="bi bi-database-x display-4 text-muted d-block mb-3"></i>
+          <p class="text-muted">
+            Keyword <strong>"{{ keyword }}"</strong> não encontrada no snapshot <strong>{{ selected_date }}</strong>.
+          </p>
+          <div class="d-flex justify-content-center gap-2 flex-wrap">
+            <a href="{{ url_for('rankings') }}?q={{ keyword }}" class="btn btn-outline-primary btn-sm">
+              Buscar em todos os rankings
+            </a>
+            {% if has_serpapi %}
+            <button class="btn btn-warning btn-sm" onclick="runLiveSearch()">
+              <i class="bi bi-broadcast me-1"></i>Buscar ao vivo no Google
+            </button>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-search display-4 d-block mb-2"></i>
+        <p>Digite uma palavra-chave para ver a posição no Google Brasil.</p>
+        {% if has_serpapi %}
+        <p class="small"><i class="bi bi-broadcast text-warning me-1"></i>SerpAPI configurado — você pode buscar em tempo real.</p>
+        {% else %}
+        <p class="small"><a href="{{ url_for('integrations') }}">Configure SerpAPI</a> para buscas em tempo real.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const HAS_SERPAPI = {{ 'true' if has_serpapi else 'false' }};
+  const KEYWORD = {{ keyword|tojson }};
+  const DOMAIN_SEL = document.getElementById('liveDomain');
+
+  // Position history chart
+  {% if results and keyword %}
+  (function() {
+    const domain = {{ (results[0].domain if results else '')|tojson }};
+    fetch(`/api/keyword-trend?keyword=${encodeURIComponent(KEYWORD)}&domain=${encodeURIComponent(domain)}`)
+      .then(r => r.json())
+      .then(data => {
+        const ctx = document.getElementById('trendChart');
+        if (!ctx || !data.length) return;
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.map(d => d.date),
+            datasets: [{
+              label: 'Posição',
+              data: data.map(d => d.position),
+              borderColor: '#4285F4',
+              backgroundColor: 'rgba(66,133,244,0.08)',
+              tension: 0.3,
+              fill: true,
+              pointRadius: 5,
+              pointBackgroundColor: '#4285F4',
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                reverse: true,
+                min: 1,
+                title: { display: true, text: 'Posição (menor = melhor)' },
+                ticks: { stepSize: 1 }
+              }
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: c => `Posição #${c.parsed.y}` } }
+            }
+          }
+        });
+      });
+  })();
+  {% endif %}
+
+  // ── Live search via SerpAPI ──────────────────────────────────
+  let _liveData = null;
+
+  function runLiveSearch() {
+    if (!KEYWORD) return;
+    const domain = DOMAIN_SEL ? DOMAIN_SEL.value : '';
+    const panel   = document.getElementById('livePanel');
+    const spinner = document.getElementById('liveSpinner');
+    const resDiv  = document.getElementById('liveResults');
+    const meta    = document.getElementById('liveMeta');
+
+    panel.classList.remove('d-none');
+    spinner.classList.remove('d-none');
+    resDiv.innerHTML = '';
+    meta.textContent = '';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    fetch(`/api/serpapi/search?keyword=${encodeURIComponent(KEYWORD)}&domain=${encodeURIComponent(domain)}`)
+      .then(r => r.json())
+      .then(data => {
+        spinner.classList.add('d-none');
+        if (data.error) {
+          resDiv.innerHTML = `<div class="alert alert-danger small">${data.error}</div>`;
+          return;
+        }
+        _liveData = data;
+        const total = data.total_results ? data.total_results.toLocaleString('pt-BR') : '?';
+        meta.innerHTML = `Cerca de ${total} resultados &nbsp;·&nbsp;
+          ${data.credits_used != null ? `<span class="text-muted">${data.credits_used} crédito(s) usado(s)</span>` : ''}`;
+
+        if (data.our_position) {
+          meta.innerHTML += ` &nbsp;·&nbsp; <strong class="text-success">Seu site: #${data.our_position}</strong>`;
+        }
+
+        resDiv.innerHTML = data.results.map(r => buildLiveCard(r)).join('');
+      })
+      .catch(e => {
+        spinner.classList.add('d-none');
+        resDiv.innerHTML = `<div class="alert alert-danger small">Erro: ${e.message}</div>`;
+      });
+  }
+
+  function buildLiveCard(r) {
+    const ourCls  = r.is_ours ? 'live-result-ours' : '';
+    const ourBadge = r.is_ours
+      ? `<span class="badge bg-success ms-2"><i class="bi bi-star-fill me-1"></i>Seu site</span>` : '';
+    const posCls  = r.position === 1 ? 'top1' : (r.position <= 3 ? 'top3' : (r.position <= 10 ? 'top10' : 'other'));
+    const domain  = (() => { try { return new URL(r.link).hostname; } catch { return r.displayed_link; } })();
+    return `
+      <div class="serp-result-card mb-3 ${ourCls}">
+        <div class="d-flex align-items-start gap-3">
+          <div class="serp-position-badge pos-${posCls}">#${r.position}</div>
+          <div class="flex-grow-1">
+            <div class="serp-url-line"><span class="serp-domain">${domain}</span></div>
+            <div class="serp-title">
+              <a href="${r.link}" target="_blank" class="text-decoration-none">${r.title}</a>
+              ${ourBadge}
+            </div>
+            <div class="serp-snippet text-muted">${r.snippet || ''}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function saveLiveResults() {
+    if (!_liveData) return;
+    const domain = DOMAIN_SEL ? DOMAIN_SEL.value : '';
+    const today  = new Date().toISOString().split('T')[0];
+    const ourResult = _liveData.results.find(r => r.is_ours);
+    if (!ourResult) { alert('Nenhum resultado do seu domínio encontrado para salvar.'); return; }
+
+    fetch('/api/serpapi/save-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keyword: KEYWORD,
+        domain,
+        position: ourResult.position,
+        landing_url: ourResult.link,
+        report_date: today,
+      })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) alert(`✓ Posição #${ourResult.position} salva para "${KEYWORD}" em ${today}.`);
+      else alert('Erro: ' + d.error);
+    });
+  }
+</script>
+{% endblock %}
