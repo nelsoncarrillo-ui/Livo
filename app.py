@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import sqlite3
 import json
@@ -140,6 +140,39 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_rankings_keyword ON rankings(keyword);
         CREATE INDEX IF NOT EXISTS idx_rankings_date ON rankings(report_date);
         CREATE INDEX IF NOT EXISTS idx_rankings_domain ON rankings(domain);
+
+        CREATE TABLE IF NOT EXISTS local_rank_searches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            search_date TEXT NOT NULL,
+            keyword TEXT NOT NULL,
+            business_name TEXT NOT NULL,
+            location_name TEXT NOT NULL,
+            center_lat REAL NOT NULL,
+            center_lng REAL NOT NULL,
+            grid_size INTEGER NOT NULL,
+            spacing_km REAL NOT NULL,
+            avg_rank REAL,
+            top3_count INTEGER DEFAULT 0,
+            top10_count INTEGER DEFAULT 0,
+            not_found_count INTEGER DEFAULT 0,
+            total_points INTEGER DEFAULT 0,
+            is_demo INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS local_rank_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            search_id INTEGER NOT NULL,
+            lat REAL NOT NULL,
+            lng REAL NOT NULL,
+            row_idx INTEGER,
+            col_idx INTEGER,
+            rank INTEGER,
+            FOREIGN KEY (search_id) REFERENCES local_rank_searches(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_lrs_keyword  ON local_rank_searches(keyword);
+        CREATE INDEX IF NOT EXISTS idx_lrs_business ON local_rank_searches(business_name);
+        CREATE INDEX IF NOT EXISTS idx_lrs_date     ON local_rank_searches(search_date);
     ''')
     conn.commit()
     conn.close()
@@ -1247,7 +1280,22 @@ def _find_rank(results, business_name):
 
 @app.route('/local-rank')
 def local_rank():
-    return render_template('local_rank.html')
+    load_id = request.args.get('load', type=int)
+    preload = None
+    if load_id:
+        conn = get_db()
+        s = conn.execute('SELECT * FROM local_rank_searches WHERE id=?', (load_id,)).fetchone()
+        if s:
+            pts = conn.execute(
+                'SELECT lat, lng, row_idx as row, col_idx as col, rank FROM local_rank_results WHERE search_id=?',
+                (load_id,)
+            ).fetchall()
+            preload = {
+                'search': dict(s),
+                'points': [dict(p) for p in pts],
+            }
+        conn.close()
+    return render_template('local_rank.html', preload=preload)
 
 
 @app.route('/api/local-rank/geocode')
@@ -1320,7 +1368,102 @@ def local_rank_analyze():
             except Exception:
                 results.append({**pt, 'rank': None})
 
-    return jsonify({'points': results, 'gridSize': grid_size, 'isDemo': use_demo})
+    # ── Save to history ─────────────────────────────────────────────────────
+    location_name = body.get('locationName', '').strip() or f'{center_lat:.4f},{center_lng:.4f}'
+    ranked = [r['rank'] for r in results if r.get('rank')]
+    avg_rank     = round(sum(ranked) / len(ranked), 2) if ranked else None
+    top3_count   = sum(1 for r in results if r.get('rank') and r['rank'] <= 3)
+    top10_count  = sum(1 for r in results if r.get('rank') and r['rank'] <= 10)
+    not_found    = sum(1 for r in results if not r.get('rank'))
+
+    conn = get_db()
+    search_id = conn.execute('''
+        INSERT INTO local_rank_searches
+            (search_date, keyword, business_name, location_name,
+             center_lat, center_lng, grid_size, spacing_km,
+             avg_rank, top3_count, top10_count, not_found_count, total_points, is_demo)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ''', (
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        keyword, business, location_name,
+        center_lat, center_lng, grid_size, spacing_km,
+        avg_rank, top3_count, top10_count, not_found,
+        len(results), 1 if use_demo else 0,
+    )).lastrowid
+
+    conn.executemany(
+        'INSERT INTO local_rank_results (search_id, lat, lng, row_idx, col_idx, rank) VALUES (?,?,?,?,?,?)',
+        [(search_id, r['lat'], r['lng'], r['row'], r['col'], r.get('rank')) for r in results]
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'points': results,
+        'gridSize': grid_size,
+        'isDemo': use_demo,
+        'searchId': search_id,
+    })
+
+
+@app.route('/local-rank/history')
+def local_rank_history():
+    conn = get_db()
+    # All searches ordered newest first
+    searches = conn.execute(
+        'SELECT * FROM local_rank_searches ORDER BY search_date DESC'
+    ).fetchall()
+
+    # Group by keyword + business_name for evolution view
+    groups = {}
+    for s in searches:
+        key = (s['keyword'].lower(), s['business_name'].lower())
+        if key not in groups:
+            groups[key] = {
+                'keyword': s['keyword'],
+                'business': s['business_name'],
+                'searches': [],
+            }
+        groups[key]['searches'].append(dict(s))
+
+    # Build trend: compare last two avg_rank in each group
+    group_list = []
+    for g in groups.values():
+        ranked_searches = [s for s in g['searches'] if s['avg_rank'] is not None]
+        if len(ranked_searches) >= 2:
+            delta = ranked_searches[0]['avg_rank'] - ranked_searches[1]['avg_rank']
+            g['trend'] = 'up' if delta < -0.5 else ('down' if delta > 0.5 else 'stable')
+            g['trend_delta'] = round(delta, 2)
+        else:
+            g['trend'] = 'new'
+            g['trend_delta'] = None
+        g['count'] = len(g['searches'])
+        g['latest'] = g['searches'][0]
+        group_list.append(g)
+
+    conn.close()
+    return render_template('local_rank_history.html', groups=group_list, total=len(searches))
+
+
+@app.route('/local-rank/history/delete/<int:search_id>', methods=['POST'])
+def local_rank_delete(search_id):
+    conn = get_db()
+    conn.execute('DELETE FROM local_rank_results WHERE search_id=?', (search_id,))
+    conn.execute('DELETE FROM local_rank_searches WHERE id=?', (search_id,))
+    conn.commit()
+    conn.close()
+    return ('', 204)
+
+
+@app.route('/api/local-rank/recent')
+def local_rank_recent():
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT id, search_date, keyword, business_name, location_name, avg_rank, top3_count, is_demo '
+        'FROM local_rank_searches ORDER BY search_date DESC LIMIT 8'
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 if __name__ == '__main__':

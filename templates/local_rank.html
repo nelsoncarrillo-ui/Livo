@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-
 {% block title %}Mapa de Ranking Local · SERP Tracker{% endblock %}
 
 {% block content %}
@@ -18,7 +17,6 @@
     border: 2.5px solid rgba(255,255,255,.85);
     box-shadow: 0 2px 8px rgba(0,0,0,.45);
     font-family: system-ui, sans-serif;
-    cursor: pointer;
   }
   .leaflet-tooltip.rank-tip {
     background: #1e293b; border: 1px solid #334155;
@@ -33,49 +31,56 @@
     align-items: center; justify-content: center;
     border-radius: .5rem;
   }
+  .recent-item { cursor: pointer; transition: background .15s; }
+  .recent-item:hover { background: rgba(255,255,255,.05) !important; }
 </style>
 
 <div class="row g-3">
   <!-- Sidebar -->
   <div class="col-12 col-lg-3">
-    <div class="card bg-dark text-white border-secondary h-100">
-      <div class="card-header border-secondary d-flex align-items-center gap-2">
-        <i class="bi bi-map-fill text-primary"></i>
-        <strong>Mapa de Ranking Local</strong>
+    <div class="card bg-dark text-white border-secondary">
+      <div class="card-header border-secondary d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-map-fill text-primary me-2"></i><strong>Mapa de Ranking Local</strong></span>
+        <a href="{{ url_for('local_rank_history') }}" class="btn btn-outline-secondary btn-sm py-0 px-2">
+          <i class="bi bi-clock-history me-1"></i>Histórico
+        </a>
       </div>
-      <div class="card-body">
-        <form id="rank-form" class="mb-3">
-          <div class="mb-3">
-            <label class="form-label small text-secondary">Keyword</label>
+      <div class="card-body pb-2">
+        <form id="rank-form">
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Keyword</label>
             <input type="text" id="f-keyword" class="form-control form-control-sm bg-dark border-secondary text-white"
-              placeholder="ex: dentista, pizzaria..." required>
+              placeholder="ex: dentista, pizzaria..." required
+              value="{{ preload.search.keyword if preload else '' }}">
           </div>
-          <div class="mb-3">
-            <label class="form-label small text-secondary">Nome do negócio</label>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Nome do negócio</label>
             <input type="text" id="f-business" class="form-control form-control-sm bg-dark border-secondary text-white"
-              placeholder="ex: Clínica Dental García" required>
+              placeholder="ex: Clínica Dental García" required
+              value="{{ preload.search.business_name if preload else '' }}">
           </div>
-          <div class="mb-3">
-            <label class="form-label small text-secondary">Localização central</label>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Localização central</label>
             <input type="text" id="f-location" class="form-control form-control-sm bg-dark border-secondary text-white"
-              placeholder="ex: São Paulo, Brasil" required>
+              placeholder="ex: São Paulo, Brasil" required
+              value="{{ preload.search.location_name if preload else '' }}">
           </div>
           <div class="row g-2 mb-3">
             <div class="col-6">
-              <label class="form-label small text-secondary">Grid</label>
+              <label class="form-label small text-secondary mb-1">Grid</label>
               <select id="f-grid" class="form-select form-select-sm bg-dark border-secondary text-white">
-                <option value="3">3×3 (9 pts)</option>
-                <option value="5" selected>5×5 (25 pts)</option>
-                <option value="7">7×7 (49 pts)</option>
+                <option value="3" {% if preload and preload.search.grid_size==3 %}selected{% endif %}>3×3</option>
+                <option value="5" {% if not preload or preload.search.grid_size==5 %}selected{% endif %}>5×5</option>
+                <option value="7" {% if preload and preload.search.grid_size==7 %}selected{% endif %}>7×7</option>
               </select>
             </div>
             <div class="col-6">
-              <label class="form-label small text-secondary">Espaçamento</label>
+              <label class="form-label small text-secondary mb-1">Espaçamento</label>
               <select id="f-spacing" class="form-select form-select-sm bg-dark border-secondary text-white">
                 <option value="0.5">0.5 km</option>
-                <option value="1" selected>1 km</option>
-                <option value="2">2 km</option>
-                <option value="5">5 km</option>
+                <option value="1" {% if not preload or preload.search.spacing_km==1 %}selected{% endif %}>1 km</option>
+                <option value="2" {% if preload and preload.search.spacing_km==2 %}selected{% endif %}>2 km</option>
+                <option value="5" {% if preload and preload.search.spacing_km==5 %}selected{% endif %}>5 km</option>
               </select>
             </div>
           </div>
@@ -83,61 +88,61 @@
             <i class="bi bi-search me-1"></i>Analisar Rankings
           </button>
         </form>
+      </div>
 
-        <!-- Alert -->
-        <div id="alert-box" class="d-none"></div>
-
-        <!-- Demo badge -->
-        <div id="demo-badge" class="d-none alert alert-warning py-2 px-3 small mb-3">
+      <!-- Status area -->
+      <div class="card-body border-top border-secondary pt-2 pb-2" id="status-area" style="display:none!important">
+        <div id="alert-box" class="d-none small"></div>
+        <div id="demo-badge" class="d-none alert alert-warning py-2 px-3 small mb-2">
           <i class="bi bi-exclamation-triangle-fill me-1"></i>
           <strong>Modo demo</strong> — dados simulados.<br>
-          Adicione sua <code>serpapi_key</code> em <a href="/integrations" class="alert-link">Integrações</a>.
+          Adicione <code>serpapi_key</code> em <a href="/integrations" class="alert-link">Integrações</a>.
+        </div>
+        <div id="saved-badge" class="d-none alert alert-success py-2 px-3 small mb-2">
+          <i class="bi bi-check-circle-fill me-1"></i>Análise salva no histórico
         </div>
 
-        <!-- Legend -->
-        <div id="legend" class="d-none">
-          <h6 class="small text-secondary text-uppercase mb-2">Legenda</h6>
-          <div class="d-flex flex-column gap-2 mb-3">
-            <div class="d-flex align-items-center gap-2">
-              <div class="rank-bubble flex-shrink-0" style="background:#22c55e;width:28px;height:28px;font-size:11px">3</div>
-              <span class="small text-white">Top 3 — Excelente</span>
+        <!-- Legend + stats -->
+        <div id="legend">
+          <div class="row g-2 text-center mb-3">
+            <div class="col-4">
+              <div class="bg-secondary bg-opacity-25 rounded p-1">
+                <div id="stat-top3" class="fw-bold text-success">—</div>
+                <div class="x-small text-secondary" style="font-size:.7rem">Top 3</div>
+              </div>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              <div class="rank-bubble flex-shrink-0" style="background:#f59e0b;width:28px;height:28px;font-size:11px">7</div>
-              <span class="small text-white">Top 4–10 — Bom</span>
+            <div class="col-4">
+              <div class="bg-secondary bg-opacity-25 rounded p-1">
+                <div id="stat-top10" class="fw-bold text-warning">—</div>
+                <div class="x-small text-secondary" style="font-size:.7rem">Top 10</div>
+              </div>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              <div class="rank-bubble flex-shrink-0" style="background:#ef4444;width:28px;height:28px;font-size:11px">15</div>
-              <span class="small text-white">Top 11–20 — Baixo</span>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <div class="rank-bubble flex-shrink-0" style="background:#6b7280;width:28px;height:28px;font-size:11px">+</div>
-              <span class="small text-white">Não encontrado</span>
+            <div class="col-4">
+              <div class="bg-secondary bg-opacity-25 rounded p-1">
+                <div id="stat-none" class="fw-bold text-secondary">—</div>
+                <div class="x-small text-secondary" style="font-size:.7rem">Sem pos.</div>
+              </div>
             </div>
           </div>
+          <div class="d-flex flex-column gap-1">
+            {% for color, label in [('#22c55e','Top 3'),('#f59e0b','Top 4–10'),('#ef4444','Top 11–20'),('#6b7280','Não encontrado')] %}
+            <div class="d-flex align-items-center gap-2">
+              <div style="width:22px;height:22px;border-radius:50%;background:{{ color }};flex-shrink:0"></div>
+              <span class="small text-secondary">{{ label }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
 
-          <!-- Stats -->
-          <h6 class="small text-secondary text-uppercase mb-2">Resultados</h6>
-          <div class="row g-2 text-center">
-            <div class="col-4">
-              <div class="bg-secondary bg-opacity-25 rounded p-2">
-                <div id="stat-top3" class="fs-5 fw-bold text-success">—</div>
-                <div class="small text-secondary">Top 3</div>
-              </div>
-            </div>
-            <div class="col-4">
-              <div class="bg-secondary bg-opacity-25 rounded p-2">
-                <div id="stat-top10" class="fs-5 fw-bold text-warning">—</div>
-                <div class="small text-secondary">Top 10</div>
-              </div>
-            </div>
-            <div class="col-4">
-              <div class="bg-secondary bg-opacity-25 rounded p-2">
-                <div id="stat-none" class="fs-5 fw-bold text-secondary">—</div>
-                <div class="small text-secondary">Sem pos.</div>
-              </div>
-            </div>
-          </div>
+      <!-- Recent searches -->
+      <div class="card-body border-top border-secondary pt-2 pb-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small text-secondary fw-semibold">RECENTES</span>
+          <a href="{{ url_for('local_rank_history') }}" class="small text-primary text-decoration-none">Ver todos →</a>
+        </div>
+        <div id="recent-list">
+          <div class="text-secondary small text-center py-2">Carregando...</div>
         </div>
       </div>
     </div>
@@ -163,12 +168,9 @@
 (function () {
   'use strict';
 
-  // Init map
   const map = L.map('rank-map', { zoomControl: true }).setView([-23.5505, -46.6333], 12);
-
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>',
-    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 20,
   }).addTo(map);
 
   let markersLayer = L.layerGroup().addTo(map);
@@ -186,19 +188,18 @@
     return L.divIcon({
       className: '',
       html: `<div class="rank-bubble" style="background:${color}">${label}</div>`,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
-      tooltipAnchor: [0, -22],
+      iconSize: [40, 40], iconAnchor: [20, 20], tooltipAnchor: [0, -22],
     });
   }
 
-  function renderPoints(points) {
+  function renderPoints(points, center) {
     markersLayer.clearLayers();
     const bounds = [];
-
     points.forEach(pt => {
       const marker = L.marker([pt.lat, pt.lng], { icon: makeIcon(pt.rank) });
-      const rankLabel = pt.rank ? `<strong style="color:${rankColor(pt.rank)}">#${pt.rank}</strong>` : '<strong style="color:#9ca3af">Não encontrado</strong>';
+      const rankLabel = pt.rank
+        ? `<strong style="color:${rankColor(pt.rank)}">#${pt.rank}</strong>`
+        : '<strong style="color:#9ca3af">Não encontrado</strong>';
       marker.bindTooltip(
         `<div>${rankLabel}</div><div style="color:#94a3b8;font-size:11px;margin-top:2px">${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}</div>`,
         { direction: 'top', className: 'rank-tip', offset: [0, -4] }
@@ -206,23 +207,43 @@
       marker.addTo(markersLayer);
       bounds.push([pt.lat, pt.lng]);
     });
-
     if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
   }
 
-  function showAlert(msg, type = 'danger') {
+  function updateStats(points) {
+    document.getElementById('stat-top3').textContent  = points.filter(p => p.rank && p.rank <= 3).length;
+    document.getElementById('stat-top10').textContent = points.filter(p => p.rank && p.rank <= 10).length;
+    document.getElementById('stat-none').textContent  = points.filter(p => !p.rank).length;
+    document.getElementById('status-area').style.removeProperty('display');
+  }
+
+  function showAlert(msg) {
     const box = document.getElementById('alert-box');
-    box.className = `alert alert-${type} py-2 px-3 small`;
+    box.className = 'alert alert-danger py-2 px-3 small';
     box.textContent = msg;
+    document.getElementById('status-area').style.removeProperty('display');
   }
 
-  function hideAlert() {
-    document.getElementById('alert-box').className = 'd-none';
-  }
+  // ── Load preload data from server ────────────────────────────────────────
+  {% if preload %}
+  (function() {
+    const pts = {{ preload.points | tojson }};
+    const s   = {{ preload.search | tojson }};
+    renderPoints(pts, { lat: s.center_lat, lng: s.center_lng });
+    updateStats(pts);
+    map.setView([s.center_lat, s.center_lng], 13);
+    document.getElementById('saved-badge').classList.remove('d-none');
+    document.getElementById('saved-badge').innerHTML =
+      '<i class="bi bi-clock-history me-1"></i>Análise do histórico: ' + s.search_date.substring(0,10);
+  })();
+  {% endif %}
 
+  // ── Form submit ─────────────────────────────────────────────────────────
   document.getElementById('rank-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    hideAlert();
+    document.getElementById('alert-box').className = 'd-none';
+    document.getElementById('demo-badge').classList.add('d-none');
+    document.getElementById('saved-badge').classList.add('d-none');
 
     const keyword  = document.getElementById('f-keyword').value.trim();
     const business = document.getElementById('f-business').value.trim();
@@ -230,46 +251,32 @@
     const gridSize = parseInt(document.getElementById('f-grid').value);
     const spacing  = parseFloat(document.getElementById('f-spacing').value);
 
-    // Show spinner
     document.getElementById('spinner-overlay').classList.remove('d-none');
     document.getElementById('btn-analyze').disabled = true;
-    document.getElementById('legend').classList.add('d-none');
-    document.getElementById('demo-badge').classList.add('d-none');
 
     try {
-      // Step 1: Geocode
       const geoRes = await fetch(`/api/local-rank/geocode?location=${encodeURIComponent(location)}`);
       const geo = await geoRes.json();
       if (!geoRes.ok) throw new Error(geo.error || 'Localização não encontrada');
-
       map.setView([geo.lat, geo.lng], 13);
 
-      // Step 2: Analyze
       const rankRes = await fetch('/api/local-rank/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          keyword, businessName: business,
-          centerLat: geo.lat, centerLng: geo.lng,
-          gridSize, spacingKm: spacing,
+          keyword, businessName: business, locationName: geo.display?.split(',').slice(0,2).join(',') || location,
+          centerLat: geo.lat, centerLng: geo.lng, gridSize, spacingKm: spacing,
         }),
       });
       const data = await rankRes.json();
       if (!rankRes.ok) throw new Error(data.error || 'Erro ao analisar');
 
       renderPoints(data.points);
-
-      // Stats
-      const top3  = data.points.filter(p => p.rank && p.rank <= 3).length;
-      const top10 = data.points.filter(p => p.rank && p.rank <= 10).length;
-      const none  = data.points.filter(p => !p.rank).length;
-      document.getElementById('stat-top3').textContent  = top3;
-      document.getElementById('stat-top10').textContent = top10;
-      document.getElementById('stat-none').textContent  = none;
-      document.getElementById('legend').classList.remove('d-none');
+      updateStats(data.points);
 
       if (data.isDemo) document.getElementById('demo-badge').classList.remove('d-none');
-
+      document.getElementById('saved-badge').classList.remove('d-none');
+      loadRecent();
     } catch (err) {
       showAlert(err.message);
     } finally {
@@ -277,6 +284,30 @@
       document.getElementById('btn-analyze').disabled = false;
     }
   });
+
+  // ── Recent searches ──────────────────────────────────────────────────────
+  async function loadRecent() {
+    try {
+      const res  = await fetch('/api/local-rank/recent');
+      const data = await res.json();
+      const el   = document.getElementById('recent-list');
+      if (!data.length) { el.innerHTML = '<div class="text-secondary small text-center py-2">Sem análises ainda</div>'; return; }
+      el.innerHTML = data.map(s => `
+        <div class="recent-item rounded px-2 py-1 mb-1 bg-secondary bg-opacity-10"
+             onclick="window.location='/local-rank?load=${s.id}'">
+          <div class="d-flex justify-content-between align-items-start">
+            <span class="small fw-semibold text-white text-truncate" style="max-width:150px" title="${s.keyword}">${s.keyword}</span>
+            <span class="badge ${s.is_demo ? 'bg-warning text-dark' : 'bg-success'} ms-1" style="font-size:.6rem">${s.is_demo ? 'demo' : 'real'}</span>
+          </div>
+          <div class="small text-secondary text-truncate" style="max-width:190px;font-size:.72rem" title="${s.business_name}">${s.business_name}</div>
+          <div class="d-flex justify-content-between mt-1">
+            <span style="font-size:.68rem" class="text-secondary">${s.search_date.substring(0,10)}</span>
+            ${s.avg_rank ? `<span style="font-size:.68rem" class="text-info">Ø ${s.avg_rank}</span>` : ''}
+          </div>
+        </div>`).join('');
+    } catch(e) { /* silently fail */ }
+  }
+  loadRecent();
 })();
 </script>
 {% endblock %}

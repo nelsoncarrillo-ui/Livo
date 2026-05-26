@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Histórico · Mapa de Ranking Local{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0 fw-bold"><i class="bi bi-clock-history text-primary me-2"></i>Histórico de Análises</h4>
+    <small class="text-muted">{{ total }} análise{{ 's' if total != 1 else '' }} guardada{{ 's' if total != 1 else '' }}</small>
+  </div>
+  <a href="{{ url_for('local_rank') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Nova Análise
+  </a>
+</div>
+
+{% if not groups %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-map" style="font-size:3rem;opacity:.3"></i>
+  <p class="mt-3">Ainda sem análises. <a href="{{ url_for('local_rank') }}">Faça sua primeira análise</a>.</p>
+</div>
+{% endif %}
+
+{% for g in groups %}
+<div class="card bg-dark border-secondary mb-4">
+  <div class="card-header border-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <span class="badge bg-primary fs-6 px-3 py-2">{{ g.keyword }}</span>
+      <span class="text-white fw-semibold">{{ g.business }}</span>
+      <span class="badge bg-secondary">{{ g.count }} análise{{ 's' if g.count != 1 else '' }}</span>
+
+      {% if g.trend == 'up' %}
+        <span class="badge bg-success"><i class="bi bi-arrow-up me-1"></i>Melhorou {{ g.trend_delta | abs }}</span>
+      {% elif g.trend == 'down' %}
+        <span class="badge bg-danger"><i class="bi bi-arrow-down me-1"></i>Piorou {{ g.trend_delta | abs }}</span>
+      {% elif g.trend == 'stable' %}
+        <span class="badge bg-secondary"><i class="bi bi-dash me-1"></i>Estável</span>
+      {% else %}
+        <span class="badge bg-info text-dark"><i class="bi bi-star me-1"></i>Nova</span>
+      {% endif %}
+    </div>
+
+    <a href="{{ url_for('local_rank') }}?load={{ g.latest.id }}"
+       class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-map-fill me-1"></i>Ver último no mapa
+    </a>
+  </div>
+
+  <div class="card-body">
+    <div class="row g-3">
+      <!-- Evolution chart -->
+      {% if g.count > 1 %}
+      <div class="col-12 col-md-5">
+        <h6 class="text-secondary small text-uppercase mb-2">Evolução do Ranking Médio</h6>
+        <div style="position:relative;height:160px">
+          <canvas id="chart-{{ loop.index }}"></canvas>
+        </div>
+        <p class="text-muted mt-1" style="font-size:.7rem">
+          <i class="bi bi-info-circle me-1"></i>Ranking médio por análise (menor = melhor)
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Searches table -->
+      <div class="col-12 {% if g.count > 1 %}col-md-7{% endif %}">
+        <h6 class="text-secondary small text-uppercase mb-2">Análises</h6>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm table-hover mb-0" style="font-size:.82rem">
+            <thead>
+              <tr class="text-secondary">
+                <th>Data</th>
+                <th>Localização</th>
+                <th class="text-center">Grid</th>
+                <th class="text-center">Ø Rank</th>
+                <th class="text-center">Top 3</th>
+                <th class="text-center">Top 10</th>
+                <th class="text-center">Sem pos.</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in g.searches %}
+              <tr id="row-{{ s.id }}">
+                <td class="text-nowrap">
+                  {{ s.search_date[:10] }}
+                  {% if s.is_demo %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">demo</span>{% endif %}
+                </td>
+                <td class="text-truncate" style="max-width:120px" title="{{ s.location_name }}">{{ s.location_name }}</td>
+                <td class="text-center">{{ s.grid_size }}×{{ s.grid_size }}</td>
+                <td class="text-center">
+                  {% if s.avg_rank %}
+                    <span class="fw-bold {% if s.avg_rank <= 5 %}text-success{% elif s.avg_rank <= 12 %}text-warning{% else %}text-danger{% endif %}">
+                      {{ s.avg_rank }}
+                    </span>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-center text-success">{{ s.top3_count }}</td>
+                <td class="text-center text-warning">{{ s.top10_count }}</td>
+                <td class="text-center text-secondary">{{ s.not_found_count }}</td>
+                <td class="text-nowrap">
+                  <a href="{{ url_for('local_rank') }}?load={{ s.id }}"
+                     class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Ver no mapa">
+                    <i class="bi bi-map"></i>
+                  </a>
+                  <button class="btn btn-outline-danger btn-sm py-0 px-2"
+                          title="Deletar" onclick="deleteSearch({{ s.id }})">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  Chart.defaults.color = '#6b7280';
+  Chart.defaults.borderColor = '#374151';
+
+  {% for g in groups %}
+  {% if g.count > 1 %}
+  (function() {
+    const searches = {{ g.searches | tojson }};
+    // Oldest to newest for the chart
+    const sorted = searches.slice().reverse().filter(s => s.avg_rank != null);
+    if (sorted.length < 2) return;
+
+    const labels = sorted.map(s => s.search_date.substring(0,10));
+    const values = sorted.map(s => s.avg_rank);
+    const colors = values.map(v => v <= 5 ? '#22c55e' : v <= 12 ? '#f59e0b' : '#ef4444');
+
+    new Chart(document.getElementById('chart-{{ loop.index }}'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,.15)',
+          pointBackgroundColor: colors,
+          pointBorderColor: colors,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: .35,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` Ranking médio: ${ctx.parsed.y}`
+            }
+          }
+        },
+        scales: {
+          y: {
+            reverse: true,
+            min: 1,
+            grid: { color: '#1f2937' },
+            ticks: {
+              stepSize: 5,
+              callback: v => `#${v}`
+            }
+          },
+          x: { grid: { color: '#1f2937' } }
+        }
+      }
+    });
+  })();
+  {% endif %}
+  {% endfor %}
+
+  // Delete a search
+  window.deleteSearch = async function(id) {
+    if (!confirm('Deletar esta análise?')) return;
+    const res = await fetch(`/local-rank/history/delete/${id}`, { method: 'POST' });
+    if (res.ok) {
+      const row = document.getElementById('row-' + id);
+      if (row) row.remove();
+    }
+  };
+})();
+</script>
+{% endblock %}

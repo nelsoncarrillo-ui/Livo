@@ -47,10 +47,15 @@
             <i class="bi bi-clock-history me-1"></i>Histórico
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'local_rank' %}active{% endif %}" href="{{ url_for('local_rank') }}">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['local_rank','local_rank_history'] %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
             <i class="bi bi-pin-map-fill me-1"></i>Mapa Local
           </a>
+          <ul class="dropdown-menu dropdown-menu-dark">
+            <li><a class="dropdown-item" href="{{ url_for('local_rank') }}"><i class="bi bi-search me-2"></i>Nova Análise</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('local_rank_history') }}"><i class="bi bi-clock-history me-2"></i>Histórico</a></li>
+          </ul>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'integrations' %}active{% endif %}" href="{{ url_for('integrations') }}">
