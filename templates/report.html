@@ -1,0 +1,638 @@
+{% extends "base.html" %}
+{% block title %}Relatório · {{ domain or 'SEO' }}{% endblock %}
+
+{% block content %}
+<style>
+  .report-card { border-radius: 12px; }
+  .report-stat { font-size: 1.9rem; font-weight: 700; line-height: 1; }
+  .report-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; }
+  .report-delta-up { color: #16a34a; }
+  .report-delta-down { color: #dc2626; }
+  .report-delta-flat { color: #94a3b8; }
+  .panel-title { font-size: .9rem; font-weight: 600; text-transform: none; color: #1e293b; }
+  body.report-light { background: #f1f5f9 !important; }
+  .light-card { background: #ffffff !important; color: #0f172a !important; border: 1px solid #e2e8f0 !important; }
+  .light-card .panel-title { color: #1e293b; }
+  .light-card .text-muted { color: #64748b !important; }
+  .light-card table { color: #1e293b; }
+  .light-card .table-light th { background: #f8fafc; }
+
+  @media print {
+    nav.navbar, .no-print { display: none !important; }
+    body { background: white !important; }
+    .light-card { box-shadow: none !important; border: 1px solid #cbd5e1 !important; break-inside: avoid; }
+    .container-fluid { padding: 0 !important; }
+    .row { page-break-inside: avoid; }
+  }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
+  <div>
+    <h4 class="mb-0 fw-bold text-white"><i class="bi bi-file-earmark-bar-graph text-primary me-2"></i>Relatório SEO</h4>
+    <small class="text-muted">Dashboard cliente · vista para presentar / imprimir</small>
+  </div>
+  <form method="get" class="d-flex gap-2 flex-wrap" action="{{ url_for('report') }}">
+    <select name="domain" class="form-select form-select-sm bg-dark text-white border-secondary" style="min-width:200px" onchange="this.form.submit()">
+      {% for d in domains %}
+        <option value="{{ d }}" {% if d==domain %}selected{% endif %}>{{ d }}</option>
+      {% endfor %}
+    </select>
+    <select name="period" class="form-select form-select-sm bg-dark text-white border-secondary" onchange="this.form.submit()">
+      {% for p,l in [(7,'7 días'),(14,'14 días'),(30,'30 días'),(90,'90 días')] %}
+        <option value="{{ p }}" {% if p==days %}selected{% endif %}>{{ l }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="site_url" value="{{ site_url }}" placeholder="GSC site URL (sc-domain:... o https://...)"
+           class="form-control form-control-sm bg-dark text-white border-secondary" style="min-width:280px">
+    <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-arrow-clockwise"></i></button>
+    <button type="button" id="syncGscBtn" class="btn btn-sm btn-success" {% if not has_gsc %}disabled{% endif %}>
+      <i class="bi bi-cloud-download me-1"></i>Sincronizar GSC
+    </button>
+    <button type="button" id="syncGa4Btn" class="btn btn-sm btn-info" {% if not has_ga4 %}disabled{% endif %} data-bs-toggle="modal" data-bs-target="#ga4SyncModal">
+      <i class="bi bi-bar-chart-fill me-1"></i>Sincronizar GA4
+    </button>
+    <button type="button" onclick="window.print()" class="btn btn-sm btn-outline-light"><i class="bi bi-printer me-1"></i>Imprimir / PDF</button>
+  </form>
+</div>
+
+<div id="syncStatus" class="alert d-none no-print"></div>
+
+<div data-bs-theme="light" style="background:#f1f5f9; padding:20px; border-radius:12px; min-height:80vh; color:#0f172a">
+
+<!-- HEADER del reporte -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h2 style="color:#0f172a; font-weight:800; letter-spacing:-.5px; margin:0">{{ domain or 'Selecciona dominio' }}</h2>
+    <small style="color:#64748b">Reporte de los últimos {{ days }} días · generado el {{ ''|striptags }}<span id="genDate"></span></small>
+  </div>
+  {% if domain %}
+  <div class="text-end">
+    <span class="badge bg-primary fs-6 px-3 py-2">Livo SEO</span>
+  </div>
+  {% endif %}
+</div>
+
+{% if not domain %}
+  <div class="card light-card report-card p-5 text-center">
+    <i class="bi bi-database-x" style="font-size:3rem;color:#94a3b8"></i>
+    <p class="mt-3 text-muted">No hay datos importados todavía. <a href="{{ url_for('index') }}">Importa un Excel de SEMrush</a> para empezar.</p>
+  </div>
+{% else %}
+
+<!-- FILA 1: GSC summary + GSC timeline + Authority -->
+<div class="row g-3 mb-3">
+  <!-- GSC 7d -->
+  <div class="col-12 col-lg-3">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="panel-title mb-2">Clics e impresiones {{ days }} días</div>
+        <div id="gscSummary" class="text-muted small">
+          {% if has_gsc and site_url %}
+            <div class="spinner-border spinner-border-sm"></div> Cargando...
+          {% elif not has_gsc %}
+            <div class="alert alert-warning small mb-0">No GSC conectado. <a href="{{ url_for('integrations') }}">Conectar</a>.</div>
+          {% else %}
+            <div class="alert alert-info small mb-0">Indica el GSC <em>site_url</em> arriba (ej. <code>sc-domain:{{ domain }}</code>)</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GSC timeline -->
+  <div class="col-12 col-lg-6">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="panel-title mb-2">Línea de tiempo de clics e impresiones · últimos 6 meses</div>
+        <div id="gscTotals" class="d-flex gap-3 small text-muted mb-2"></div>
+        <div style="position:relative;height:200px"><canvas id="gscChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authority -->
+  <div class="col-12 col-lg-3">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="panel-title">Authority Score
+            {% if authority %}
+              <span class="ms-1 badge bg-primary">{{ authority[-1].score|round(0)|int }}</span>
+            {% endif %}
+          </div>
+          <button class="btn btn-sm btn-link p-0 no-print" data-bs-toggle="modal" data-bs-target="#authorityModal" title="Agregar valor">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+        </div>
+        {% if authority %}
+          <div style="position:relative;height:130px"><canvas id="authChart"></canvas></div>
+          <small class="text-muted">Últimos {{ authority|length }} valores · {{ authority[-1].date }}</small>
+        {% else %}
+          <div class="text-center py-3 text-muted small">
+            <i class="bi bi-graph-up" style="font-size:1.8rem;opacity:.3"></i>
+            <p class="mb-1 mt-2">Sin datos aún.</p>
+            <button class="btn btn-sm btn-outline-primary no-print" data-bs-toggle="modal" data-bs-target="#authorityModal">
+              Agregar primer valor
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FILA 2: GA4 + Backlinks -->
+<div class="row g-3 mb-3">
+  <!-- GA4 -->
+  <div class="col-12 col-lg-7">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="panel-title">Tráfico Analytics — último periodo</div>
+          <button class="btn btn-sm btn-link p-0 no-print" data-bs-toggle="modal" data-bs-target="#ga4Modal" title="Agregar datos GA4">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+        </div>
+        {% if ga4 and ga4.current %}
+        {% set cur = ga4.current %}
+        {% set prev = ga4.get('previous') %}
+        <table class="table table-sm align-middle mb-0" style="font-size:.85rem">
+          <thead class="table-light">
+            <tr>
+              <th>Canal</th>
+              <th class="text-end">Usuários totais</th>
+              <th class="text-end">Novos</th>
+              <th class="text-end">Recurrentes</th>
+              <th class="text-end">Tempo méd.</th>
+              <th class="text-end">Sessões eng.</th>
+              <th class="text-end">Eventos</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>{{ cur.channel }}</strong></td>
+              <td class="text-end">{{ '{:,}'.format(cur.total_users or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ '{:,}'.format(cur.new_users or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ '{:,}'.format(cur.returning_users or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ ((cur.avg_engagement_seconds or 0) // 60)|int }}m {{ ((cur.avg_engagement_seconds or 0) % 60)|int }}s</td>
+              <td class="text-end">{{ '{:,}'.format(cur.engaged_sessions or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ '{:,}'.format(cur.events or 0).replace(',','.') }}</td>
+            </tr>
+            {% if prev %}
+            <tr class="text-muted small">
+              <td>{{ prev.period_start }} → {{ prev.period_end }}</td>
+              <td class="text-end">{{ '{:,}'.format(prev.total_users or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ '{:,}'.format(prev.new_users or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ '{:,}'.format(prev.returning_users or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ ((prev.avg_engagement_seconds or 0) // 60)|int }}m {{ ((prev.avg_engagement_seconds or 0) % 60)|int }}s</td>
+              <td class="text-end">{{ '{:,}'.format(prev.engaged_sessions or 0).replace(',','.') }}</td>
+              <td class="text-end">{{ '{:,}'.format(prev.events or 0).replace(',','.') }}</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+        <small class="text-muted">{{ cur.period_start }} → {{ cur.period_end }} · fuente: {{ cur.source }}</small>
+        {% else %}
+          <div class="text-center py-4 text-muted small">
+            <i class="bi bi-bar-chart" style="font-size:1.8rem;opacity:.3"></i>
+            <p class="mb-1 mt-2">Sin datos de GA4 aún. Próximamente integración automática.</p>
+            <button class="btn btn-sm btn-outline-primary no-print" data-bs-toggle="modal" data-bs-target="#ga4Modal">
+              Agregar manualmente
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Backlinks -->
+  <div class="col-12 col-lg-5">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="panel-title">Línea de tiempo de backlinks
+            {% if backlinks %}
+              <span class="ms-1 badge bg-info text-dark">{{ '{:,}'.format(backlinks[-1].total_backlinks or 0).replace(',','.') }}</span>
+            {% endif %}
+          </div>
+          <button class="btn btn-sm btn-link p-0 no-print" data-bs-toggle="modal" data-bs-target="#backlinksModal">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+        </div>
+        {% if backlinks %}
+          <div style="position:relative;height:180px"><canvas id="blChart"></canvas></div>
+          <small class="text-muted">{{ backlinks|length }} medidas · última: {{ backlinks[-1].date }}</small>
+        {% else %}
+          <div class="text-center py-3 text-muted small">
+            <i class="bi bi-link-45deg" style="font-size:1.8rem;opacity:.3"></i>
+            <p class="mb-1 mt-2">Sin datos de backlinks aún.</p>
+            <button class="btn btn-sm btn-outline-primary no-print" data-bs-toggle="modal" data-bs-target="#backlinksModal">
+              Agregar valor
+            </button>
+            <p class="mt-3 small text-muted" style="font-size:.7rem">
+              <i class="bi bi-info-circle me-1"></i>
+              <strong>GSC API no expone backlinks.</strong> Google solo los muestra en su UI ("Enlaces"). Opciones:
+              <br>· anotar mensualmente el total que ves en GSC
+              <br>· integrar DataForSEO ($) próximamente
+            </p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FILA 3: Tabla keywords + Distribución -->
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-7">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="panel-title mb-2">Palabras clave — últimas posiciones
+          {% if keywords.dates.latest %}<small class="text-muted ms-2">{{ keywords.dates.latest }}{% if keywords.dates.previous %} vs {{ keywords.dates.previous }}{% endif %}</small>{% endif %}
+        </div>
+        {% if not keywords.rows %}
+          <div class="text-muted small py-3">Sin keywords importadas para este dominio.</div>
+        {% else %}
+        <div class="table-responsive" style="max-height:480px;overflow:auto">
+          <table class="table table-sm align-middle" style="font-size:.78rem">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Keyword</th>
+                <th>Int.</th>
+                <th class="text-center">Pos</th>
+                <th class="text-center">Δ</th>
+                <th class="text-end">Vol.</th>
+                <th>URL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in keywords.rows %}
+              <tr>
+                <td>{{ r.keyword }}</td>
+                <td><span class="text-muted small">{{ (r.intents or '')[:1] }}</span></td>
+                <td class="text-center">
+                  {% if r.position %}
+                    {% if r.position <= 3 %}<span class="badge bg-success">{{ r.position }}</span>
+                    {% elif r.position <= 10 %}<span class="badge bg-info text-dark">{{ r.position }}</span>
+                    {% elif r.position <= 20 %}<span class="badge bg-warning text-dark">{{ r.position }}</span>
+                    {% else %}<span class="badge bg-secondary">{{ r.position }}</span>{% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if r.position_diff and r.position_diff < 0 %}
+                    <span class="report-delta-up small">▲ {{ -r.position_diff }}</span>
+                  {% elif r.position_diff and r.position_diff > 0 %}
+                    <span class="report-delta-down small">▼ {{ r.position_diff }}</span>
+                  {% else %}<span class="report-delta-flat small">—</span>{% endif %}
+                </td>
+                <td class="text-end">{{ '{:,}'.format(r.search_volume or 0).replace(',','.') if r.search_volume else '—' }}</td>
+                <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  {% if r.landing_url %}<a href="{{ r.landing_url }}" target="_blank" class="small">{{ r.landing_url.replace('https://','').replace('http://','') }}</a>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <div class="card light-card report-card h-100">
+      <div class="card-body">
+        <div class="panel-title mb-2">Distribución de palabras clave</div>
+        {% if not distribution.labels %}
+          <div class="text-muted small py-3">Sin imports suficientes para mostrar evolución.</div>
+        {% else %}
+          <div style="position:relative;height:300px"><canvas id="distChart"></canvas></div>
+          <div class="d-flex justify-content-around mt-2 small">
+            <div><span style="display:inline-block;width:10px;height:10px;background:#fbbf24;border-radius:2px"></span> #1-3</div>
+            <div><span style="display:inline-block;width:10px;height:10px;background:#60a5fa;border-radius:2px"></span> #4-10</div>
+            <div><span style="display:inline-block;width:10px;height:10px;background:#a78bfa;border-radius:2px"></span> #11-20</div>
+            <div><span style="display:inline-block;width:10px;height:10px;background:#94a3b8;border-radius:2px"></span> #21-100</div>
+            <div><span style="display:inline-block;width:10px;height:10px;background:#cbd5e1;border-radius:2px"></span> &gt;100</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endif %} {# domain check #}
+
+</div> <!-- bg light box -->
+
+<!-- ─── Modales de entrada manual ─── -->
+<div class="modal fade" id="authorityModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content bg-dark text-light">
+    <form method="post" action="{{ url_for('report_manual_authority') }}">
+      <div class="modal-header border-secondary"><h5 class="modal-title">Agregar Authority Score</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="domain" value="{{ domain }}">
+        <div class="mb-3"><label class="form-label">Fecha</label><input type="date" name="date" class="form-control bg-dark text-white border-secondary" value="{{ ''|striptags }}" required></div>
+        <div class="mb-3"><label class="form-label">Score (0-100)</label><input type="number" name="score" min="0" max="100" step="0.1" class="form-control bg-dark text-white border-secondary" required></div>
+      </div>
+      <div class="modal-footer border-secondary"><button class="btn btn-primary">Guardar</button></div>
+    </form>
+  </div></div>
+</div>
+
+<div class="modal fade" id="backlinksModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content bg-dark text-light">
+    <form method="post" action="{{ url_for('report_manual_backlinks') }}">
+      <div class="modal-header border-secondary"><h5 class="modal-title">Agregar Backlinks</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="domain" value="{{ domain }}">
+        <div class="mb-3"><label class="form-label">Fecha</label><input type="date" name="date" class="form-control bg-dark text-white border-secondary" required></div>
+        <div class="mb-3"><label class="form-label">Total backlinks</label><input type="number" name="total_backlinks" min="0" class="form-control bg-dark text-white border-secondary" required></div>
+        <div class="mb-3"><label class="form-label">Referring domains</label><input type="number" name="referring_domains" min="0" class="form-control bg-dark text-white border-secondary"></div>
+      </div>
+      <div class="modal-footer border-secondary"><button class="btn btn-primary">Guardar</button></div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Modal sincronizar GA4 (Data API) -->
+<div class="modal fade" id="ga4SyncModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content bg-dark text-light">
+    <div class="modal-header border-secondary"><h5 class="modal-title">Sincronizar GA4</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="mb-3">
+        <label class="form-label small">Property GA4</label>
+        <select id="ga4PropertySel" class="form-select bg-dark text-white border-secondary">
+          <option>Cargando...</option>
+        </select>
+        <small class="text-muted">Se guarda como predeterminada para <code>{{ domain }}</code></small>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small">Periodo (días hacia atrás)</label>
+        <select id="ga4DaysSel" class="form-select bg-dark text-white border-secondary">
+          <option value="7">7 días</option>
+          <option value="30" selected>30 días</option>
+          <option value="90">90 días</option>
+        </select>
+      </div>
+      <div id="ga4SyncStatus" class="alert d-none"></div>
+    </div>
+    <div class="modal-footer border-secondary">
+      <button id="ga4DoSyncBtn" class="btn btn-info">
+        <i class="bi bi-cloud-download me-1"></i>Sincronizar ahora
+      </button>
+    </div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="ga4Modal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content bg-dark text-light">
+    <form method="post" action="{{ url_for('report_manual_ga4') }}">
+      <div class="modal-header border-secondary"><h5 class="modal-title">Agregar tráfico GA4</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="domain" value="{{ domain }}">
+        <div class="row g-2">
+          <div class="col-6"><label class="form-label small">Período inicio</label><input type="date" name="period_start" class="form-control bg-dark text-white border-secondary" required></div>
+          <div class="col-6"><label class="form-label small">Período fin</label><input type="date" name="period_end" class="form-control bg-dark text-white border-secondary" required></div>
+          <div class="col-12"><label class="form-label small">Canal</label><input name="channel" value="Organic Search" class="form-control bg-dark text-white border-secondary"></div>
+          <div class="col-6 col-md-4"><label class="form-label small">Total usuários</label><input type="number" name="total_users" min="0" class="form-control bg-dark text-white border-secondary"></div>
+          <div class="col-6 col-md-4"><label class="form-label small">Novos</label><input type="number" name="new_users" min="0" class="form-control bg-dark text-white border-secondary"></div>
+          <div class="col-6 col-md-4"><label class="form-label small">Recurrentes</label><input type="number" name="returning_users" min="0" class="form-control bg-dark text-white border-secondary"></div>
+          <div class="col-6 col-md-4"><label class="form-label small">Tempo méd. (seg)</label><input type="number" step="0.1" name="avg_engagement_seconds" min="0" class="form-control bg-dark text-white border-secondary"></div>
+          <div class="col-6 col-md-4"><label class="form-label small">Sessões eng.</label><input type="number" name="engaged_sessions" min="0" class="form-control bg-dark text-white border-secondary"></div>
+          <div class="col-6 col-md-4"><label class="form-label small">Eventos</label><input type="number" name="events" min="0" class="form-control bg-dark text-white border-secondary"></div>
+        </div>
+      </div>
+      <div class="modal-footer border-secondary"><button class="btn btn-primary">Guardar</button></div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('genDate').textContent = new Date().toLocaleDateString('es-ES', { day:'numeric', month:'long', year:'numeric' });
+
+// ── Sincronizar GSC (snapshot a imports+rankings)
+const syncBtn = document.getElementById('syncGscBtn');
+if (syncBtn) {
+  syncBtn.addEventListener('click', async () => {
+    const siteUrl = document.querySelector('input[name="site_url"]').value.trim();
+    if (!siteUrl) {
+      alert('Indica el GSC site_url arriba (ej. sc-domain:livo.com.br)');
+      return;
+    }
+    const statusBox = document.getElementById('syncStatus');
+    statusBox.className = 'alert alert-info no-print';
+    statusBox.classList.remove('d-none');
+    statusBox.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Descargando datos de Search Console (puede tomar unos segundos)...';
+    syncBtn.disabled = true;
+    const fd = new FormData();
+    fd.append('site_url', siteUrl);
+    fd.append('domain', '{{ domain }}');
+    fd.append('days', 30);
+    try {
+      const r = await fetch('{{ url_for("report_sync_gsc") }}', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        statusBox.className = 'alert alert-warning no-print';
+        statusBox.textContent = data.error || 'Error';
+        syncBtn.disabled = false;
+        return;
+      }
+      statusBox.className = 'alert alert-success no-print';
+      statusBox.innerHTML = `<i class="bi bi-check-circle me-1"></i>✓ ${data.rows} keywords sincronizadas (${data.date}). Recargando...`;
+      setTimeout(() => location.reload(), 1500);
+    } catch (e) {
+      statusBox.className = 'alert alert-danger no-print';
+      statusBox.textContent = e.message;
+      syncBtn.disabled = false;
+    }
+  });
+}
+
+// ── GSC live fetch
+{% if has_gsc and site_url and domain %}
+fetch('{{ url_for("report_gsc_api") }}?site_url=' + encodeURIComponent('{{ site_url }}') + '&period={{ days }}')
+  .then(r => r.json()).then(data => {
+    const sum = data.summary; const ts = data.timeseries;
+    const cur = sum.current || {}; const prev = sum.previous || {};
+    const fmt = n => new Intl.NumberFormat('es-ES').format(n || 0);
+    const delta = (a, b) => { if (!b) return ''; const d = ((a-b)/b*100); return (d>=0?'▲ +':'▼ ')+d.toFixed(1)+'%'; };
+    const dCls = (a, b) => a>=b ? 'report-delta-up' : 'report-delta-down';
+
+    document.getElementById('gscSummary').innerHTML = `
+      <div class="d-flex flex-column gap-3">
+        <div>
+          <div class="report-label">Clics totales</div>
+          <div class="report-stat" style="color:#2563eb">${fmt(cur.clicks)}</div>
+          <div class="small ${dCls(cur.clicks, prev.clicks)}">${delta(cur.clicks, prev.clicks)} vs anterior</div>
+        </div>
+        <div>
+          <div class="report-label">Impresiones</div>
+          <div class="report-stat" style="color:#0891b2">${fmt(cur.impressions)}</div>
+          <div class="small ${dCls(cur.impressions, prev.impressions)}">${delta(cur.impressions, prev.impressions)} vs anterior</div>
+        </div>
+      </div>`;
+
+    // Timeseries chart
+    if (ts && ts.series) {
+      const labels = ts.series.map(s => s.date);
+      const clicks = ts.series.map(s => s.clicks);
+      const imps   = ts.series.map(s => s.impressions);
+      new Chart(document.getElementById('gscChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'Clics', data: clicks, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.1)', tension:.3, yAxisID:'y', pointRadius:0, borderWidth:1.5 },
+          { label: 'Impresiones', data: imps, borderColor: '#0891b2', backgroundColor: 'rgba(8,145,178,.1)', tension:.3, yAxisID:'y1', pointRadius:0, borderWidth:1.5 },
+        ]},
+        options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index'},
+          scales: {
+            y:  { position:'left',  ticks:{ color:'#2563eb', font:{size:10} } },
+            y1: { position:'right', ticks:{ color:'#0891b2', font:{size:10} }, grid:{drawOnChartArea:false} },
+            x:  { ticks:{ color:'#64748b', font:{size:9}, maxTicksLimit:8 } },
+          },
+          plugins: { legend: { labels:{ font:{size:11}, color:'#475569' }, position:'top' } }
+        }
+      });
+      const t = ts.totals || {};
+      document.getElementById('gscTotals').innerHTML =
+        `<span>📊 <strong>${fmt(t.clicks)}</strong> clics</span>` +
+        `<span>👁 <strong>${fmt(t.impressions)}</strong> impresiones</span>` +
+        `<span>📈 CTR <strong>${t.ctr}%</strong></span>` +
+        `<span>📍 Pos. <strong>${t.position}</strong></span>`;
+    }
+  })
+  .catch(err => {
+    document.getElementById('gscSummary').innerHTML = '<div class="alert alert-warning small">Error: ' + err.message + '</div>';
+  });
+{% endif %}
+
+// ── GA4 sync
+{% if has_ga4 and domain %}
+let ga4PropertiesLoaded = false;
+const savedPropertyId = {{ (domain_set.ga4_property_id if domain_set else '')|tojson }};
+
+document.getElementById('syncGa4Btn').addEventListener('click', async () => {
+  if (ga4PropertiesLoaded) return;
+  const sel = document.getElementById('ga4PropertySel');
+  sel.innerHTML = '<option>Cargando properties...</option>';
+  try {
+    const r = await fetch('/api/ga4/properties');
+    const data = await r.json();
+    if (data.error) { sel.innerHTML = '<option>Error: ' + data.error + '</option>'; return; }
+    sel.innerHTML = data.map(p =>
+      `<option value="${p.property_id}" data-name="${p.property_name}" ${savedPropertyId == p.property_id ? 'selected' : ''}>${p.property_name} (${p.account}) · ${p.property_id}</option>`
+    ).join('');
+    ga4PropertiesLoaded = true;
+  } catch (e) {
+    sel.innerHTML = '<option>Error: ' + e.message + '</option>';
+  }
+});
+
+document.getElementById('ga4DoSyncBtn').addEventListener('click', async () => {
+  const sel = document.getElementById('ga4PropertySel');
+  const propertyId = sel.value;
+  const propertyName = sel.selectedOptions[0]?.dataset?.name || '';
+  const days = document.getElementById('ga4DaysSel').value;
+  const statusBox = document.getElementById('ga4SyncStatus');
+  if (!propertyId) return;
+  statusBox.className = 'alert alert-info';
+  statusBox.classList.remove('d-none');
+  statusBox.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Descargando datos de Analytics...';
+  document.getElementById('ga4DoSyncBtn').disabled = true;
+
+  // 1) guardar mapping property → domain
+  const settingsFd = new FormData();
+  settingsFd.append('domain', '{{ domain }}');
+  settingsFd.append('ga4_property_id', propertyId);
+  settingsFd.append('ga4_property_name', propertyName);
+  await fetch('/api/domain/settings', { method: 'POST', body: settingsFd });
+
+  // 2) sync
+  const fd = new FormData();
+  fd.append('domain', '{{ domain }}');
+  fd.append('property_id', propertyId);
+  fd.append('days', days);
+  try {
+    const r = await fetch('/api/ga4/sync', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok || data.error) {
+      statusBox.className = 'alert alert-warning';
+      statusBox.textContent = data.error || 'Error';
+      document.getElementById('ga4DoSyncBtn').disabled = false;
+      return;
+    }
+    statusBox.className = 'alert alert-success';
+    statusBox.innerHTML = `<i class="bi bi-check-circle me-1"></i>✓ ${data.channels_saved} canales guardados (${data.period}). Recargando...`;
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    statusBox.className = 'alert alert-danger';
+    statusBox.textContent = e.message;
+    document.getElementById('ga4DoSyncBtn').disabled = false;
+  }
+});
+{% endif %}
+
+// ── Authority chart
+{% if authority %}
+new Chart(document.getElementById('authChart'), {
+  type: 'line',
+  data: {
+    labels: {{ authority|map(attribute='date')|list|tojson }},
+    datasets: [{
+      label: 'Authority Score',
+      data: {{ authority|map(attribute='score')|list|tojson }},
+      borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', tension:.3, fill:true, pointRadius:2, borderWidth:2
+    }]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: { y:{ beginAtZero:true, max:100, ticks:{font:{size:9}} }, x:{ ticks:{font:{size:9}} } },
+    plugins:{ legend:{display:false} }
+  }
+});
+{% endif %}
+
+// ── Backlinks chart
+{% if backlinks %}
+new Chart(document.getElementById('blChart'), {
+  type: 'line',
+  data: {
+    labels: {{ backlinks|map(attribute='date')|list|tojson }},
+    datasets: [{
+      label: 'Backlinks',
+      data: {{ backlinks|map(attribute='total_backlinks')|list|tojson }},
+      borderColor: '#0891b2', backgroundColor: 'rgba(8,145,178,.15)', tension:.2, fill:true, pointRadius:2, borderWidth:2
+    }]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: { y:{ beginAtZero:true, ticks:{font:{size:9}} }, x:{ ticks:{font:{size:9}} } },
+    plugins:{ legend:{display:false} }
+  }
+});
+{% endif %}
+
+// ── Ranking distribution stacked bar
+{% if distribution and distribution.labels %}
+new Chart(document.getElementById('distChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ distribution.labels|tojson }},
+    datasets: [
+      { label:'#1-3',    data: {{ distribution.buckets.top3|tojson }},   backgroundColor: '#fbbf24' },
+      { label:'#4-10',   data: {{ distribution.buckets.top10|tojson }},  backgroundColor: '#60a5fa' },
+      { label:'#11-20',  data: {{ distribution.buckets.top20|tojson }},  backgroundColor: '#a78bfa' },
+      { label:'#21-100', data: {{ distribution.buckets.top100|tojson }}, backgroundColor: '#94a3b8' },
+      { label:'>100',    data: {{ distribution.buckets.beyond|tojson }}, backgroundColor: '#cbd5e1' },
+    ]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales: {
+      x: { stacked:true, ticks:{font:{size:9}} },
+      y: { stacked:true, ticks:{font:{size:9}} }
+    },
+    plugins: { legend: { display:false } }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

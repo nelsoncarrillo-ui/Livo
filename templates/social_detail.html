@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+{% block title %}@{{ acc.username }} · Instagram{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-3">
+    {% if acc.profile_picture_url %}<img src="{{ acc.profile_picture_url }}" width="56" height="56" class="rounded-circle" style="object-fit:cover">{% endif %}
+    <div>
+      <a href="{{ url_for('social_index') }}" class="text-info text-decoration-none small"><i class="bi bi-arrow-left me-1"></i>Social</a>
+      <h5 class="mb-0 fw-bold text-white">@{{ acc.username }}
+        {% if acc.is_own %}<span class="badge bg-danger ms-1">Mía</span>{% else %}<span class="badge bg-secondary ms-1">Competidor</span>{% endif %}
+      </h5>
+      {% if acc.name %}<small class="text-muted">{{ acc.name }}</small>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if acc.biography %}<p class="text-muted small">{{ acc.biography }}</p>{% endif %}
+
+<!-- KPIs -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card bg-dark border-secondary stat-card"><div class="card-body text-center">
+      <div class="stat-icon text-danger"><i class="bi bi-people-fill"></i></div>
+      <div class="stat-value text-white">{{ '{:,}'.format(latest.followers or 0).replace(',','.') if latest else '—' }}</div>
+      <div class="stat-label">Seguidores</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card bg-dark border-secondary stat-card"><div class="card-body text-center">
+      <div class="stat-icon text-info"><i class="bi bi-grid-3x3-gap-fill"></i></div>
+      <div class="stat-value text-white">{{ latest.media_count if latest else '—' }}</div>
+      <div class="stat-label">Publicaciones</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card bg-dark border-secondary stat-card"><div class="card-body text-center">
+      <div class="stat-icon text-success"><i class="bi bi-heart-fill"></i></div>
+      <div class="stat-value text-success">{{ latest.engagement_rate if latest and latest.engagement_rate is not none else '—' }}%</div>
+      <div class="stat-label">Engagement rate</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card bg-dark border-secondary stat-card"><div class="card-body text-center">
+      <div class="stat-icon text-warning"><i class="bi bi-calendar-week"></i></div>
+      <div class="stat-value text-white">{{ stats.freq_per_week or '—' }}</div>
+      <div class="stat-label">Posts/semana</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ══ IDEAS CON IA (Claude visión) ══ -->
+<div class="card mb-4" style="background:linear-gradient(135deg,#2a1a40,#1a1430);border:1px solid #6d4aaf">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div>
+        <h5 class="fw-bold text-white mb-1"><i class="bi bi-magic text-warning me-2"></i>Ideas con IA — análisis visual</h5>
+        <p class="text-muted small mb-0">Claude mira las imágenes reales de tus posts + métricas y genera crítica e ideas listas para publicar.</p>
+      </div>
+      {% if has_gemini or has_claude %}
+        <div class="d-flex gap-2 align-items-center">
+          {% if has_gemini and has_claude %}
+            <select id="aiProvider" class="form-select form-select-sm bg-dark text-white border-secondary" style="width:auto">
+              <option value="gemini">Gemini (gratis)</option>
+              <option value="claude">Claude (mejor)</option>
+            </select>
+          {% elif has_gemini %}
+            <span class="badge bg-success">Gemini gratis</span>
+          {% else %}
+            <span class="badge bg-info text-dark">Claude</span>
+          {% endif %}
+          <button id="aiBtn" class="btn btn-primary"><i class="bi bi-stars me-1"></i>Generar ideas con IA</button>
+        </div>
+      {% else %}
+        <a href="{{ url_for('integrations') }}" class="btn btn-outline-light btn-sm">Configura una API key gratis (Gemini)</a>
+      {% endif %}
+    </div>
+    <div id="aiStatus" class="mt-3 d-none"></div>
+    <div id="aiResult" class="mt-3 d-none"></div>
+  </div>
+</div>
+
+<!-- ══ PLAN DE CONTENIDO RECOMENDADO ══ -->
+<div class="card mb-4" style="background:linear-gradient(135deg,#1b2540,#161e33);border:1px solid #3a4866">
+  <div class="card-body">
+    <h5 class="fw-bold text-white mb-1"><i class="bi bi-stars text-warning me-2"></i>Plan de contenido recomendado (basado en datos)</h5>
+    {% if not recs.enough_data %}
+      <p class="text-muted mb-0">Necesito al menos {{ recs.min_needed }} publicaciones para generar recomendaciones (tienes {{ recs.have }}). Sincroniza más datos.</p>
+    {% else %}
+    <p class="text-muted small mb-3">Basado en tus {{ recs.top_count }} publicaciones de mayor engagement · media general {{ '{:,}'.format(recs.avg_eng).replace(',','.') }} · ~{{ recs.per_week }} posts/semana</p>
+
+    <div class="row g-3">
+      <!-- Calendario semanal recomendado -->
+      <div class="col-12 col-lg-4">
+        <div class="border border-secondary rounded p-3 h-100">
+          <div class="small text-uppercase text-muted mb-2"><i class="bi bi-calendar-week me-1"></i>Cuándo publicar</div>
+          {% if recs.schedule %}
+            {% for s in recs.schedule %}
+            <div class="d-flex align-items-center justify-content-between py-2 {% if not loop.last %}border-bottom border-secondary{% endif %}">
+              <div>
+                <span class="badge bg-primary">{{ s.day }}</span>
+                <span class="fw-bold text-white ms-1">{{ '%02d'|format(s.hour) }}:00</span>
+              </div>
+              <span class="small text-success">{{ '{:,}'.format(s.avg_eng).replace(',','.') }} eng.</span>
+            </div>
+            {% endfor %}
+            <p class="text-muted mt-2 mb-0" style="font-size:.7rem">Franjas donde tus mejores posts obtuvieron más engagement.</p>
+          {% else %}
+            <p class="text-muted small">Sin patrón horario claro aún.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Recomendaciones priorizadas -->
+      <div class="col-12 col-lg-8">
+        <div class="row g-2">
+          {% for r in recs.recommendations %}
+          <div class="col-12">
+            <div class="d-flex align-items-start gap-2 p-2 rounded" style="background:rgba(255,255,255,.03)">
+              <i class="bi {{ r.icon }} fs-5 {% if r.priority=='high' %}text-warning{% elif r.priority=='medium' %}text-info{% else %}text-secondary{% endif %}"></i>
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="fw-semibold text-white">{{ r.title }}</span>
+                  {% if r.priority=='high' %}<span class="badge bg-warning text-dark" style="font-size:.6rem">PRIORIDAD</span>{% endif %}
+                  <span class="badge bg-secondary" style="font-size:.6rem">{{ r.category }}</span>
+                </div>
+                <div class="small text-muted">{{ r.detail }}</div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% if recs.ideas %}
+    <div class="mt-3 pt-3 border-top border-secondary">
+      <div class="small text-uppercase text-muted mb-2"><i class="bi bi-pencil-square me-1"></i>Ideas concretas para tus próximos posts</div>
+      <div class="row g-2">
+        {% for idea in recs.ideas %}
+        <div class="col-12 col-md-6">
+          <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-arrow-right-circle text-primary mt-1"></i>
+            <span class="text-light small">{{ idea }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Crecimiento -->
+  <div class="col-12 col-lg-7">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-2">Crecimiento de seguidores</h6>
+      {% if snapshots|length > 1 %}
+        <div style="position:relative;height:240px"><canvas id="growthChart"></canvas></div>
+      {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-graph-up" style="font-size:2rem;opacity:.3"></i>
+          <p class="mt-2 small">Necesitas al menos 2 sincronizaciones en fechas distintas para ver la evolución.<br>Sincroniza periódicamente para construir el histórico.</p>
+        </div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <!-- Tipos de contenido + horarios -->
+  <div class="col-12 col-lg-5">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-2">Mix de contenido</h6>
+      <div style="position:relative;height:160px"><canvas id="typeChart"></canvas></div>
+      {% if stats.top_hours %}
+      <h6 class="text-secondary text-uppercase small mb-1 mt-3">Mejores horarios (más posts)</h6>
+      <div class="d-flex gap-1 flex-wrap">
+        {% for hour, cnt in stats.top_hours %}
+          <span class="badge bg-secondary">{{ '%02d'|format(hour) }}:00 ({{ cnt }})</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Top posts -->
+  <div class="col-12 col-lg-8">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-3">Mejores publicaciones (por engagement)</h6>
+      {% if not top_posts %}
+        <div class="text-muted small">Sin posts disponibles.</div>
+      {% else %}
+      <div class="row g-2">
+        {% for p in top_posts %}
+        <div class="col-6 col-md-4">
+          <a href="{{ p.permalink }}" target="_blank" class="text-decoration-none">
+            <div class="card bg-black border-secondary h-100">
+              {% if p.thumbnail_url or p.media_url %}
+                <img src="{{ p.thumbnail_url or p.media_url }}" class="card-img-top" style="height:120px;object-fit:cover" loading="lazy">
+              {% endif %}
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between small">
+                  <span class="text-danger"><i class="bi bi-heart-fill"></i> {{ '{:,}'.format(p.like_count or 0).replace(',','.') }}</span>
+                  <span class="text-info"><i class="bi bi-chat-fill"></i> {{ p.comments_count or 0 }}</span>
+                </div>
+                <div class="text-muted mt-1" style="font-size:.7rem;max-height:32px;overflow:hidden">{{ (p.caption or '')[:80] }}</div>
+              </div>
+            </div>
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <!-- Hashtags -->
+  <div class="col-12 col-lg-4">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-2">Hashtags más usados</h6>
+      {% if not hashtags %}
+        <div class="text-muted small">Sin hashtags en los posts recientes.</div>
+      {% else %}
+      <div class="d-flex gap-1 flex-wrap">
+        {% for h in hashtags %}
+          {% set size = 0.75 + (h.count / hashtags[0].count) * 0.6 %}
+          <span class="badge bg-secondary" style="font-size:{{ size }}rem">#{{ h.tag }} <span class="text-info">{{ h.count }}</span></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<!-- ── ANÁLISIS AVANZADO ── -->
+<div class="row g-3 mb-4">
+  <!-- Mejores horarios (heatmap) -->
+  <div class="col-12 col-lg-8">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-1">Cuándo publicas (frecuencia por día y hora)</h6>
+      <p class="text-muted" style="font-size:.72rem">Más oscuro = más publicaciones en esa franja</p>
+      <div style="overflow-x:auto">
+        <table class="heatmap" style="border-collapse:separate;border-spacing:2px">
+          <tr>
+            <td></td>
+            {% for h in range(0,24) %}<td class="text-muted text-center" style="font-size:.6rem;width:20px">{{ '%02d'|format(h) }}</td>{% endfor %}
+          </tr>
+          {% for wd in range(7) %}
+          <tr>
+            <td class="text-muted pe-1" style="font-size:.7rem">{{ best_time.weekdays[wd] }}</td>
+            {% for h in range(0,24) %}
+              {% set v = best_time.grid[wd][h] %}
+              {% set op = (v / best_time.max_cell) if best_time.max_cell else 0 %}
+              <td title="{{ best_time.weekdays[wd] }} {{ '%02d'|format(h) }}h · {{ v }} posts"
+                  style="width:20px;height:20px;border-radius:3px;background:rgba(79,140,255,{{ 0.08 + op*0.92 }})"></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div class="row mt-3">
+        <div class="col-6">
+          <div class="small text-muted text-uppercase mb-1">Mejores horas (por engagement)</div>
+          {% for h in best_time.best_hours %}
+            <span class="badge bg-success me-1">{{ '%02d'|format(h.hour) }}:00 · {{ '{:,}'.format(h.avg_eng).replace(',','.') }}</span>
+          {% endfor %}
+        </div>
+        <div class="col-6">
+          <div class="small text-muted text-uppercase mb-1">Mejores días (por engagement)</div>
+          {% for d in best_time.best_weekdays[:4] %}
+            <span class="badge bg-info text-dark me-1">{{ d.weekday }} · {{ '{:,}'.format(d.avg_eng).replace(',','.') }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Rendimiento por tipo de contenido -->
+  <div class="col-12 col-lg-4">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-2">Rendimiento por tipo</h6>
+      {% if not by_type %}<div class="text-muted small">Sin datos.</div>{% else %}
+      <table class="table table-dark table-sm mb-0">
+        <thead><tr><th>Tipo</th><th class="text-end">Posts</th><th class="text-end">Eng. medio</th></tr></thead>
+        <tbody>
+          {% for t in by_type %}
+          <tr>
+            <td><span class="badge bg-secondary">{{ t.type }}</span></td>
+            <td class="text-end">{{ t.count }}</td>
+            <td class="text-end fw-bold text-success">{{ '{:,}'.format(t.avg_eng).replace(',','.') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="text-muted mt-2 mb-0" style="font-size:.7rem">Engagement medio = (likes + comentarios) / nº posts de ese tipo</p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Temas / palabras de captions -->
+  <div class="col-12 col-lg-7">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-2">Temas más mencionados (captions)</h6>
+      {% if not topics.top_words %}<div class="text-muted small">Sin texto suficiente.</div>{% else %}
+      <div class="d-flex gap-1 flex-wrap mb-3">
+        {% for w in topics.top_words %}
+          {% set size = 0.75 + (w.count / topics.top_words[0].count) * 0.7 %}
+          <span class="badge bg-secondary" style="font-size:{{ size }}rem">{{ w.word }} <span class="text-info">{{ w.count }}</span></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if topics.top_emojis %}
+      <div class="small text-muted text-uppercase mb-1">Emojis más usados</div>
+      <div style="font-size:1.3rem">
+        {% for e in topics.top_emojis %}<span title="{{ e.count }} veces" class="me-1">{{ e.emoji }}<sub class="text-muted" style="font-size:.6rem">{{ e.count }}</sub></span>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="mt-3">
+        <div class="small text-muted text-uppercase mb-1">Longitud de caption vs engagement (largo medio: {{ topics.avg_length }} car.)</div>
+        <div class="row g-2">
+          {% for b in topics.length_vs_eng %}
+          <div class="col-4 text-center">
+            <div class="border border-secondary rounded py-2">
+              <div class="fw-bold text-success">{{ '{:,}'.format(b.avg_eng).replace(',','.') }}</div>
+              <div class="small text-muted">{{ b.bucket }}</div>
+              <div class="text-muted" style="font-size:.65rem">{{ b.posts }} posts</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Hashtags por engagement -->
+  <div class="col-12 col-lg-5">
+    <div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <h6 class="text-secondary text-uppercase small mb-2">Hashtags por engagement</h6>
+      {% if not hashtag_perf %}<div class="text-muted small">Sin hashtags.</div>{% else %}
+      <table class="table table-dark table-sm mb-0">
+        <thead><tr><th>Hashtag</th><th class="text-end">Usos</th><th class="text-end">Eng. medio</th></tr></thead>
+        <tbody>
+          {% for h in hashtag_perf %}
+          <tr>
+            <td>#{{ h.tag }}</td>
+            <td class="text-end text-muted">{{ h.count }}</td>
+            <td class="text-end fw-bold text-success">{{ '{:,}'.format(h.avg_eng).replace(',','.') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="text-muted mt-2 mb-0" style="font-size:.7rem">Ordenado por engagement medio de los posts que usan cada hashtag (no solo frecuencia).</p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<!-- Tabla de posts -->
+<div class="card bg-dark border-secondary">
+  <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-list-ul me-2 text-info"></i>Todas las publicaciones ({{ posts|length }})</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive" style="max-height:500px;overflow:auto">
+      <table class="table table-dark table-hover table-sm mb-0 align-middle">
+        <thead class="sticky-top"><tr>
+          <th>Fecha</th><th>Tipo</th><th>Caption</th>
+          <th class="text-end">Likes</th><th class="text-end">Comentarios</th><th></th>
+        </tr></thead>
+        <tbody>
+          {% for p in posts %}
+          <tr>
+            <td class="text-muted small">{{ (p.timestamp or '')[:10] }}</td>
+            <td><span class="badge bg-secondary">{{ p.media_type }}</span></td>
+            <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ (p.caption or '')[:100] }}</td>
+            <td class="text-end text-danger">{{ '{:,}'.format(p.like_count or 0).replace(',','.') }}</td>
+            <td class="text-end text-info">{{ p.comments_count or 0 }}</td>
+            <td>{% if p.permalink %}<a href="{{ p.permalink }}" target="_blank" class="btn btn-sm btn-outline-light"><i class="bi bi-box-arrow-up-right"></i></a>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Ideas con IA
+const aiBtn = document.getElementById('aiBtn');
+if (aiBtn) {
+  aiBtn.addEventListener('click', async () => {
+    const status = document.getElementById('aiStatus');
+    const result = document.getElementById('aiResult');
+    result.classList.add('d-none');
+    status.classList.remove('d-none');
+    status.innerHTML = '<div class="alert alert-info mb-0"><div class="spinner-border spinner-border-sm me-2"></div>Claude está mirando tus imágenes y analizando el contenido... (15-40s)</div>';
+    aiBtn.disabled = true;
+    const provSel = document.getElementById('aiProvider');
+    const fd = new FormData();
+    if (provSel) fd.append('provider', provSel.value);
+    try {
+      const r = await fetch('/api/social/ai-ideas/{{ acc.id }}', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) {
+        status.innerHTML = '<div class="alert alert-warning mb-0">' + (d.error || 'Error') + '</div>';
+        aiBtn.disabled = false;
+        return;
+      }
+      status.classList.add('d-none');
+      renderAi(d.result);
+      aiBtn.disabled = false;
+      aiBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Regenerar';
+    } catch (e) {
+      status.innerHTML = '<div class="alert alert-danger mb-0">' + e.message + '</div>';
+      aiBtn.disabled = false;
+    }
+  });
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderAi(res) {
+  const box = document.getElementById('aiResult');
+  let html = '';
+  // Crítica
+  html += `<div class="card bg-dark border-secondary mb-3"><div class="card-body">
+    <h6 class="text-info text-uppercase small">Crítica del contenido</h6>
+    <p class="text-light mb-2">${esc(res.content_review)}</p>
+    <h6 class="text-info text-uppercase small mt-3"><i class="bi bi-eye me-1"></i>Lo que se ve en tus imágenes</h6>
+    <p class="text-light mb-0">${esc(res.visual_observations)}</p>
+  </div></div>`;
+  // Working / not working
+  html += '<div class="row g-3 mb-3">';
+  html += `<div class="col-md-6"><div class="card bg-dark border-success h-100"><div class="card-body">
+    <h6 class="text-success text-uppercase small"><i class="bi bi-check-circle me-1"></i>Funciona</h6>
+    <ul class="text-light small mb-0">${(res.whats_working||[]).map(x => '<li>'+esc(x)+'</li>').join('')}</ul></div></div></div>`;
+  html += `<div class="col-md-6"><div class="card bg-dark border-warning h-100"><div class="card-body">
+    <h6 class="text-warning text-uppercase small"><i class="bi bi-exclamation-triangle me-1"></i>A mejorar</h6>
+    <ul class="text-light small mb-0">${(res.whats_not_working||[]).map(x => '<li>'+esc(x)+'</li>').join('')}</ul></div></div></div>`;
+  html += '</div>';
+  // Ideas
+  html += '<h6 class="text-warning text-uppercase small mb-2"><i class="bi bi-lightbulb me-1"></i>Ideas listas para publicar</h6>';
+  html += '<div class="row g-3">';
+  (res.ideas||[]).forEach((idea, i) => {
+    html += `<div class="col-12 col-lg-6"><div class="card bg-dark border-secondary h-100"><div class="card-body">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge bg-primary">${esc(idea.format)}</span>
+        <span class="badge bg-secondary">${esc(idea.best_time)}</span>
+      </div>
+      <h6 class="text-white mb-1">${i+1}. ${esc(idea.title)}</h6>
+      <div class="small text-muted mb-2"><strong>Gancho:</strong> ${esc(idea.hook)}</div>
+      <div class="p-2 rounded mb-2" style="background:rgba(255,255,255,.04)">
+        <div class="small text-muted text-uppercase mb-1">Caption sugerido</div>
+        <div class="text-light small" style="white-space:pre-wrap">${esc(idea.caption_example)}</div>
+      </div>
+      <div class="mb-2">${(idea.hashtags||[]).map(h => '<span class="badge bg-secondary me-1">#'+esc(h.replace(/^#/,''))+'</span>').join('')}</div>
+      <div class="small text-muted"><i class="bi bi-info-circle me-1"></i>${esc(idea.rationale)}</div>
+    </div></div></div>`;
+  });
+  html += '</div>';
+  box.innerHTML = html;
+  box.classList.remove('d-none');
+}
+
+{% if snapshots|length > 1 %}
+new Chart(document.getElementById('growthChart'), {
+  type: 'line',
+  data: {
+    labels: {{ snapshots|map(attribute='date')|list|tojson }},
+    datasets: [{
+      label: 'Seguidores',
+      data: {{ snapshots|map(attribute='followers')|list|tojson }},
+      borderColor: '#ec4899', backgroundColor: 'rgba(236,72,153,.15)', tension:.3, fill:true, pointRadius:3, borderWidth:2
+    }]
+  },
+  options: { responsive:true, maintainAspectRatio:false,
+    scales:{ y:{ ticks:{color:'#94a3b8'} }, x:{ ticks:{color:'#94a3b8',font:{size:9}} } },
+    plugins:{ legend:{display:false} } }
+});
+{% endif %}
+
+const types = {{ stats.types|tojson }};
+new Chart(document.getElementById('typeChart'), {
+  type: 'doughnut',
+  data: {
+    labels: Object.keys(types),
+    datasets: [{ data: Object.values(types), backgroundColor: ['#ec4899','#8b5cf6','#3b82f6','#10b981','#f59e0b'] }]
+  },
+  options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{color:'#cbd5e1',font:{size:10}} } } }
+});
+</script>
+{% endblock %}

@@ -1,153 +1,195 @@
 {% extends "base.html" %}
-{% block title %}Início — SERP Tracker Brasil{% endblock %}
+{% block title %}Livo · Dashboard SEO{% endblock %}
 
 {% block content %}
-<div class="row g-3 mb-4">
-  <div class="col-12">
-    <h4 class="fw-bold"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h4>
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0 fw-bold text-white"><i class="bi bi-grid-fill text-primary me-2"></i>Dashboard</h4>
+    <small class="text-muted">Comando central · todo lo SEO, independiente y vía APIs</small>
   </div>
+  {% if has_gsc %}
+    <span class="badge bg-success px-3 py-2"><i class="bi bi-check-circle me-1"></i>Search Console conectado</span>
+  {% else %}
+    <a href="{{ url_for('integrations') }}" class="btn btn-sm btn-outline-warning">
+      <i class="bi bi-plug me-1"></i>Conectar Search Console
+    </a>
+  {% endif %}
+</div>
 
-  {% if stats %}
+<!-- KPIs últimos datos -->
+{% if stats %}
+<div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
-    <div class="card stat-card border-0 shadow-sm h-100">
+    <div class="card bg-dark border-secondary stat-card">
       <div class="card-body text-center">
         <div class="stat-icon text-primary"><i class="bi bi-globe2"></i></div>
-        <div class="stat-value">{{ stats.domain }}</div>
-        <div class="stat-label">Domínio</div>
+        <div class="stat-value text-white" style="font-size:1.1rem">{{ stats.domain }}</div>
+        <div class="stat-label">Domínio activo</div>
       </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card stat-card border-0 shadow-sm h-100">
+    <div class="card bg-dark border-secondary stat-card">
       <div class="card-body text-center">
-        <div class="stat-icon text-success"><i class="bi bi-key-fill"></i></div>
-        <div class="stat-value">{{ stats.total }}</div>
-        <div class="stat-label">Palavras-chave</div>
+        <div class="stat-icon text-info"><i class="bi bi-key-fill"></i></div>
+        <div class="stat-value text-white">{{ stats.total }}</div>
+        <div class="stat-label">Keywords último snapshot</div>
       </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card stat-card border-0 shadow-sm h-100">
+    <div class="card bg-dark border-secondary stat-card">
       <div class="card-body text-center">
         <div class="stat-icon text-warning"><i class="bi bi-trophy-fill"></i></div>
-        <div class="stat-value">{{ stats.top3 }}</div>
+        <div class="stat-value text-warning">{{ stats.top3 }}</div>
         <div class="stat-label">Top 3</div>
       </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card stat-card border-0 shadow-sm h-100">
+    <div class="card bg-dark border-secondary stat-card">
       <div class="card-body text-center">
-        <div class="stat-icon text-info"><i class="bi bi-bar-chart-line-fill"></i></div>
-        <div class="stat-value">{{ stats.top10 }}</div>
+        <div class="stat-icon text-success"><i class="bi bi-bar-chart-line-fill"></i></div>
+        <div class="stat-value text-success">{{ stats.top10 }}</div>
         <div class="stat-label">Top 10</div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-</div>
-
-<div class="row g-4">
-  <!-- Upload card -->
-  <div class="col-12 col-lg-5">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white border-bottom fw-semibold">
-        <i class="bi bi-cloud-upload-fill me-2 text-primary"></i>Importar arquivo SEMrush
-      </div>
-      <div class="card-body">
-        <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data">
-          <div class="upload-zone mb-3" id="uploadZone">
-            <i class="bi bi-file-earmark-spreadsheet display-4 text-muted"></i>
-            <p class="mt-2 mb-1 fw-semibold">Arraste o arquivo .xlsx aqui</p>
-            <p class="text-muted small">ou clique para selecionar</p>
-            <input type="file" name="file" id="fileInput" accept=".xlsx,.xls" class="d-none">
-            <div id="fileName" class="mt-2 text-success small fw-semibold"></div>
-          </div>
-          <div class="alert alert-info small py-2 mb-3">
-            <i class="bi bi-info-circle me-1"></i>
-            Exporte o relatório <strong>Position Tracking → Rankings Overview</strong> do SEMrush como .xlsx e importe aqui.
-          </div>
-          <button type="submit" class="btn btn-primary w-100">
-            <i class="bi bi-upload me-2"></i>Importar dados
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Imports history -->
-  <div class="col-12 col-lg-7">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white border-bottom fw-semibold d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-clock-history me-2 text-secondary"></i>Importações realizadas</span>
-        <span class="badge bg-secondary">{{ imports|length }}</span>
-      </div>
-      <div class="card-body p-0">
-        {% if imports %}
-        <div class="table-responsive">
-          <table class="table table-hover mb-0 small">
-            <thead class="table-light">
-              <tr>
-                <th>Data do relatório</th>
-                <th>Domínio</th>
-                <th class="text-center">Palavras</th>
-                <th>Importado em</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for imp in imports %}
-              <tr>
-                <td><span class="badge bg-primary-subtle text-primary-emphasis fw-semibold">{{ imp.report_date }}</span></td>
-                <td><code class="text-dark">{{ imp.domain }}</code></td>
-                <td class="text-center fw-semibold">{{ imp.keyword_count }}</td>
-                <td class="text-muted">{{ imp.import_date[:16] }}</td>
-                <td>
-                  <form method="POST" action="{{ url_for('delete_import', import_id=imp.id) }}"
-                        onsubmit="return confirm('Excluir esta importação?')">
-                    <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1">
-                      <i class="bi bi-trash3"></i>
-                    </button>
-                  </form>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <div class="text-center text-muted py-5">
-          <i class="bi bi-inbox display-5 d-block mb-2"></i>
-          <p>Nenhum dado importado ainda.<br>Faça upload de um arquivo SEMrush para começar.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-{% if imports %}
-<div class="row g-3 mt-2">
-  <div class="col-12">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white border-bottom fw-semibold">
-        <i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Ações rápidas
-      </div>
-      <div class="card-body d-flex flex-wrap gap-2">
-        <a href="{{ url_for('rankings') }}" class="btn btn-outline-primary">
-          <i class="bi bi-table me-1"></i>Ver todos os rankings
-        </a>
-        <a href="{{ url_for('serp') }}" class="btn btn-outline-secondary">
-          <i class="bi bi-search me-1"></i>Simular SERP
-        </a>
-        {% if imports|length >= 2 %}
-        <a href="{{ url_for('history') }}" class="btn btn-outline-success">
-          <i class="bi bi-arrow-left-right me-1"></i>Comparar datas
-        </a>
-        {% endif %}
       </div>
     </div>
   </div>
 </div>
 {% endif %}
+
+<!-- Grid de módulos -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-6 col-lg-4">
+    <a href="{{ url_for('report') }}" class="card bg-dark border-secondary stat-card h-100 text-decoration-none">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-file-earmark-bar-graph text-primary fs-3 me-2"></i>
+          <h6 class="mb-0 text-white fw-bold">Relatório SEO</h6>
+        </div>
+        <p class="small text-muted mb-2">Dashboard cliente con GSC, keywords, distribución, backlinks y GA4. Imprimible / PDF.</p>
+        <span class="badge bg-primary">Abrir →</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-4">
+    <a href="{{ url_for('bot_view') }}" class="card bg-dark border-secondary stat-card h-100 text-decoration-none">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-robot text-info fs-3 me-2"></i>
+          <h6 class="mb-0 text-white fw-bold">Bot View</h6>
+        </div>
+        <p class="small text-muted mb-2">Auditoría SEO de una URL — cómo la ve Googlebot (HTML crudo + render con JS).</p>
+        <span class="badge bg-secondary">{{ counts.bot_view }} análises</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-4">
+    <a href="{{ url_for('crawler_index') }}" class="card bg-dark border-secondary stat-card h-100 text-decoration-none">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-diagram-3 text-success fs-3 me-2"></i>
+          <h6 class="mb-0 text-white fw-bold">Site Crawler</h6>
+        </div>
+        <p class="small text-muted mb-2">Auditoría completa del sitio. Score por página, findings detallados.</p>
+        <span class="badge bg-secondary">{{ counts.crawls }} crawls</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-4">
+    <a href="{{ url_for('serp') }}" class="card bg-dark border-secondary stat-card h-100 text-decoration-none">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-search text-warning fs-3 me-2"></i>
+          <h6 class="mb-0 text-white fw-bold">SERP Tracker</h6>
+        </div>
+        <p class="small text-muted mb-2">Posiciones en Google Brasil vía SerpAPI. Histórico por keyword.</p>
+        <span class="badge bg-secondary">SerpAPI</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-4">
+    <a href="{{ url_for('local_rank') }}" class="card bg-dark border-secondary stat-card h-100 text-decoration-none">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-pin-map-fill text-danger fs-3 me-2"></i>
+          <h6 class="mb-0 text-white fw-bold">Mapa Local</h6>
+        </div>
+        <p class="small text-muted mb-2">Ranking en Google Maps por grid geográfico — para negocios físicos.</p>
+        <span class="badge bg-secondary">{{ counts.local }} análises</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-4">
+    <a href="{{ url_for('integrations') }}" class="card bg-dark border-secondary stat-card h-100 text-decoration-none">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-plug-fill text-info fs-3 me-2"></i>
+          <h6 class="mb-0 text-white fw-bold">Integrações</h6>
+        </div>
+        <p class="small text-muted mb-2">Conectar Search Console, SerpAPI, y próximamente GA4 + DataForSEO.</p>
+        <span class="badge bg-{% if has_gsc %}success{% else %}warning{% endif %}">
+          {% if has_gsc %}GSC OK{% else %}Configurar{% endif %}
+        </span>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- Snapshots recientes -->
+<div class="card bg-dark border-secondary">
+  <div class="card-header border-secondary d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-clock-history me-2 text-info"></i>Últimos snapshots de keywords</span>
+    <a href="{{ url_for('history') }}" class="text-info small text-decoration-none">Ver todos →</a>
+  </div>
+  <div class="card-body p-0">
+    {% if snapshots %}
+      <table class="table table-dark table-hover mb-0 small">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Dominio</th>
+            <th class="text-center">Keywords</th>
+            <th>Fuente</th>
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in snapshots %}
+          <tr>
+            <td><span class="badge bg-primary">{{ s.report_date }}</span></td>
+            <td>{{ s.domain }}</td>
+            <td class="text-center">{{ s.keyword_count }}</td>
+            <td class="text-muted small">
+              {% if s.filename and s.filename.startswith('gsc_') %}
+                <i class="bi bi-search me-1"></i>Search Console
+              {% else %}
+                <i class="bi bi-cloud me-1"></i>{{ s.filename }}
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <a href="{{ url_for('rankings', date=s.report_date) }}" class="btn btn-sm btn-outline-light"><i class="bi bi-table"></i></a>
+              <form method="POST" action="{{ url_for('delete_import', import_id=s.id) }}" class="d-inline"
+                    onsubmit="return confirm('Excluir snapshot?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash3"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-cloud-download display-5 d-block mb-2"></i>
+        <p>Aún no hay datos de keywords.<br>
+        Conecta <a href="{{ url_for('integrations') }}">Search Console</a> y sincroniza desde el <a href="{{ url_for('report') }}">Relatório</a>.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

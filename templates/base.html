@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -47,6 +47,11 @@
             <i class="bi bi-clock-history me-1"></i>Histórico
           </a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'report' %}active{% endif %}" href="{{ url_for('report') }}">
+            <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatório
+          </a>
+        </li>
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle {% if request.endpoint in ['local_rank','local_rank_history'] %}active{% endif %}"
              href="#" data-bs-toggle="dropdown">
@@ -56,6 +61,21 @@
             <li><a class="dropdown-item" href="{{ url_for('local_rank') }}"><i class="bi bi-search me-2"></i>Nova Análise</a></li>
             <li><a class="dropdown-item" href="{{ url_for('local_rank_history') }}"><i class="bi bi-clock-history me-2"></i>Histórico</a></li>
           </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['bot_view','bot_view_detail','crawler_index','crawler_detail'] %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-robot me-1"></i>Análise SEO
+          </a>
+          <ul class="dropdown-menu dropdown-menu-dark">
+            <li><a class="dropdown-item" href="{{ url_for('bot_view') }}"><i class="bi bi-search me-2"></i>Bot View (1 URL)</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('crawler_index') }}"><i class="bi bi-diagram-3 me-2"></i>Site Crawler</a></li>
+          </ul>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint in ['social_index','social_account_detail'] %}active{% endif %}" href="{{ url_for('social_index') }}">
+            <i class="bi bi-instagram me-1"></i>Social
+          </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'integrations' %}active{% endif %}" href="{{ url_for('integrations') }}">

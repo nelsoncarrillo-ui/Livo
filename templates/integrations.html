@@ -203,6 +203,328 @@
 
 </div>
 
+<!-- ── Google Analytics 4 ──────────────────────────────────── -->
+<div class="row g-4 mt-1">
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon bg-info-subtle text-info">
+          <i class="bi bi-bar-chart-fill"></i>
+        </div>
+        <div>
+          <div class="fw-bold">Google Analytics 4</div>
+          <div class="small text-muted">Tráfego oficial — grátis vía Data API</div>
+        </div>
+        {% if ga4_connected %}
+          <span class="badge bg-success ms-auto">Conectado</span>
+        {% elif gsc_has_creds %}
+          <span class="badge bg-warning text-dark ms-auto">Listo para conectar</span>
+        {% else %}
+          <span class="badge bg-secondary ms-auto">Falta credentials.json</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info small py-2 mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Usa el mismo <code>credentials.json</code> subido para Search Console.
+          Solo necesitas habilitar <strong>Google Analytics Data API</strong> y <strong>Admin API</strong>
+          en tu proyecto de Cloud Console.
+          Añade además este URI de redirect: <code class="user-select-all">http://localhost:5000/ga4/callback</code>
+        </div>
+
+        <div class="mb-3">
+          {% if not ga4_connected %}
+            <a href="{{ url_for('ga4_auth') }}"
+               class="btn btn-info btn-sm w-100 {% if not gsc_has_creds %}disabled{% endif %}">
+              <i class="bi bi-google me-1"></i>Conectar GA4 con Google
+            </a>
+          {% else %}
+            <div class="d-flex gap-2">
+              <a href="{{ url_for('ga4_auth') }}" class="btn btn-outline-info btn-sm flex-grow-1">
+                <i class="bi bi-arrow-clockwise me-1"></i>Reconectar
+              </a>
+              <form method="POST" action="{{ url_for('ga4_disconnect') }}" class="flex-shrink-0">
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                  <i class="bi bi-x-circle me-1"></i>Desconectar
+                </button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if ga4_connected %}
+        <hr class="my-3">
+        <div class="fw-semibold small mb-2"><i class="bi bi-list-ul me-1"></i>Tus properties</div>
+        <div id="ga4Props" class="small text-muted">
+          <div class="spinner-border spinner-border-sm me-1"></div>Cargando...
+        </div>
+        <div class="small text-muted mt-2">
+          <i class="bi bi-info-circle me-1"></i>El sync de datos GA4 se hace desde la pestaña
+          <a href="{{ url_for('report') }}">Relatório</a> (botón <em>Sincronizar GA4</em>).
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon bg-danger-subtle text-danger">
+          <i class="bi bi-speedometer2"></i>
+        </div>
+        <div>
+          <div class="fw-bold">PageSpeed Insights</div>
+          <div class="small text-muted">Core Web Vitals (LCP, CLS, INP) — grátis</div>
+        </div>
+        {% if settings.pagespeed_key %}
+          <span class="badge bg-success ms-auto">Configurado</span>
+        {% else %}
+          <span class="badge bg-secondary ms-auto">Não configurado</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info small py-2 mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Crea una API key gratuita en
+          <a href="https://developers.google.com/speed/docs/insights/v5/get-started" target="_blank" class="alert-link">Google Cloud → PageSpeed Insights API</a>.
+          Se usa en <strong>Bot View</strong> y en el <strong>Crawler</strong> para medir velocidad real.
+        </div>
+        <form method="POST" action="{{ url_for('pagespeed_save_key') }}">
+          <label class="form-label small fw-semibold">API Key</label>
+          <div class="input-group mb-3">
+            <input type="password" name="pagespeed_key" id="psKey"
+                   class="form-control form-control-sm"
+                   value="{{ settings.pagespeed_key or '' }}"
+                   placeholder="Pega tu API key de Google">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleVis('psKey',this)">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+          <button type="submit" class="btn btn-danger btn-sm w-100">
+            <i class="bi bi-save me-1"></i>Salvar key
+          </button>
+        </form>
+        <hr class="my-3">
+        <div class="small text-muted">
+          <strong>Próximas:</strong> DataForSEO (backlinks + authority + volumen), Google Ads Keyword Planner, Bing Webmaster Tools.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Instagram (Social) ──────────────────────────────────── -->
+<div class="row g-4 mt-1">
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon" style="background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff">
+          <i class="bi bi-instagram"></i>
+        </div>
+        <div>
+          <div class="fw-bold">Instagram</div>
+          <div class="small text-muted">Análisis de perfil, posts y competidores</div>
+        </div>
+        {% if ig_connected %}
+          <span class="badge bg-success ms-auto">@{{ ig_username }}</span>
+        {% elif settings.fb_app_id %}
+          <span class="badge bg-warning text-dark ms-auto">App configurado</span>
+        {% else %}
+          <span class="badge bg-secondary ms-auto">Não configurado</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="setup-steps mb-3">
+          <div class="fw-semibold small mb-2"><i class="bi bi-list-ol me-1"></i>Configurar (1 vez):</div>
+          <ol class="small text-muted ps-3 mb-0">
+            <li>Cuenta de Instagram <strong>Business o Creator</strong> vinculada a una página de Facebook</li>
+            <li>Crea una app en <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a></li>
+            <li>Agrega el producto <strong>Instagram Graph API</strong> + <strong>Facebook Login</strong></li>
+            <li>En Facebook Login → Valid OAuth Redirect URIs: <code class="user-select-all">http://localhost:5000/social/instagram/callback</code></li>
+            <li>Copia el <strong>App ID</strong> y <strong>App Secret</strong> abajo</li>
+          </ol>
+        </div>
+
+        <form method="POST" action="{{ url_for('social_save_fb_app') }}" class="mb-3">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Facebook App ID</label>
+              <input type="text" name="fb_app_id" class="form-control form-control-sm"
+                     value="{{ settings.fb_app_id or '' }}" placeholder="123456789012345">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Facebook App Secret</label>
+              <input type="password" name="fb_app_secret" id="fbSecret" class="form-control form-control-sm"
+                     value="{{ settings.fb_app_secret or '' }}" placeholder="••••••••">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-sm btn-dark w-100 mt-2"><i class="bi bi-save me-1"></i>Salvar credenciales</button>
+        </form>
+
+        {% if not ig_connected %}
+          <a href="{{ url_for('social_ig_auth') }}" class="btn btn-sm w-100 text-white {% if not settings.fb_app_id %}disabled{% endif %}"
+             style="background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)">
+            <i class="bi bi-instagram me-1"></i>Conectar Instagram
+          </a>
+        {% else %}
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('social_index') }}" class="btn btn-sm btn-outline-danger flex-grow-1"><i class="bi bi-graph-up me-1"></i>Ir a Social</a>
+            <form method="POST" action="{{ url_for('social_ig_disconnect') }}">
+              <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Desconectar</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon bg-primary-subtle text-primary"><i class="bi bi-facebook"></i></div>
+        <div>
+          <div class="fw-bold">Facebook</div>
+          <div class="small text-muted">Páginas que administras (reusa el login de Meta)</div>
+        </div>
+        {% if ig_connected %}<span class="badge bg-success ms-auto">Listo</span>{% else %}<span class="badge bg-secondary ms-auto">Conecta Meta</span>{% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted">Facebook usa la <strong>misma conexión de Meta</strong> del bloque de Instagram. Si ya conectaste Instagram, las páginas que administras aparecerán en <a href="{{ url_for('social_index') }}">Social</a> para sincronizar.</p>
+        <div class="alert alert-warning small py-2 mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Añadí el permiso <code>pages_read_user_content</code> para leer posts. Si conectaste antes de este cambio, pulsa <strong>Reconectar</strong> en el bloque de Instagram para concederlo.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TikTok ──────────────────────────────────────────────── -->
+<div class="row g-4 mt-1">
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon bg-dark text-white"><i class="bi bi-tiktok"></i></div>
+        <div>
+          <div class="fw-bold">TikTok</div>
+          <div class="small text-muted">Perfil y vídeos de tu cuenta (Display API)</div>
+        </div>
+        {% if tt_connected %}<span class="badge bg-success ms-auto">Conectado</span>
+        {% elif settings.tiktok_client_key %}<span class="badge bg-warning text-dark ms-auto">App configurado</span>
+        {% else %}<span class="badge bg-secondary ms-auto">Não configurado</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <div class="setup-steps mb-3">
+          <div class="fw-semibold small mb-2"><i class="bi bi-list-ol me-1"></i>Configurar (1 vez):</div>
+          <ol class="small text-muted ps-3 mb-0">
+            <li>Crea una app en <a href="https://developers.tiktok.com" target="_blank">developers.tiktok.com</a></li>
+            <li>Agrega <strong>Login Kit</strong> + producto <strong>Display API</strong></li>
+            <li>Scopes: <code>user.info.basic, user.info.stats, video.list</code></li>
+            <li>Redirect URI: <code class="user-select-all">http://localhost:5000/social/tiktok/callback</code></li>
+            <li>Copia Client Key y Client Secret abajo</li>
+          </ol>
+        </div>
+        <form method="POST" action="{{ url_for('social_tt_save_app') }}" class="mb-3">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Client Key</label>
+            <input type="text" name="tiktok_client_key" class="form-control form-control-sm" value="{{ settings.tiktok_client_key or '' }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Client Secret</label>
+            <input type="password" name="tiktok_client_secret" id="ttSecret" class="form-control form-control-sm" value="{{ settings.tiktok_client_secret or '' }}">
+          </div>
+          <button type="submit" class="btn btn-sm btn-dark w-100"><i class="bi bi-save me-1"></i>Salvar credenciales</button>
+        </form>
+        {% if not tt_connected %}
+          <a href="{{ url_for('social_tt_auth') }}" class="btn btn-sm btn-dark w-100 {% if not settings.tiktok_client_key %}disabled{% endif %}">
+            <i class="bi bi-tiktok me-1"></i>Conectar TikTok
+          </a>
+        {% else %}
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('social_index') }}" class="btn btn-sm btn-outline-dark flex-grow-1"><i class="bi bi-graph-up me-1"></i>Ir a Social</a>
+            <form method="POST" action="{{ url_for('social_tt_disconnect') }}"><button class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i></button></form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon" style="background:#1a73e8;color:#fff"><i class="bi bi-google"></i></div>
+        <div>
+          <div class="fw-bold">Google Gemini (ideas con IA — GRATIS)</div>
+          <div class="small text-muted">Análisis visual de posts, sin costo</div>
+        </div>
+        {% if settings.gemini_api_key %}<span class="badge bg-success ms-auto">Configurado</span>
+        {% else %}<span class="badge bg-secondary ms-auto">Não configurado</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <div class="alert alert-success small py-2 mb-3">
+          <i class="bi bi-gift me-1"></i>
+          <strong>Gratis, sin tarjeta.</strong> Crea una key en
+          <a href="https://aistudio.google.com/apikey" target="_blank" class="alert-link">aistudio.google.com/apikey</a>.
+          Gemini analiza las imágenes de tus posts y genera ideas. ~1500 generaciones/día gratis.
+        </div>
+        <form method="POST" action="{{ url_for('social_save_gemini_key') }}">
+          <label class="form-label small fw-semibold">API Key</label>
+          <div class="input-group mb-3">
+            <input type="password" name="gemini_api_key" id="geminiKey" class="form-control form-control-sm"
+                   value="{{ settings.gemini_api_key or '' }}" placeholder="AIza...">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleVis('geminiKey',this)"><i class="bi bi-eye"></i></button>
+          </div>
+          <button type="submit" class="btn btn-sm w-100 text-white" style="background:#1a73e8"><i class="bi bi-save me-1"></i>Salvar key</button>
+        </form>
+        <div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Úsalo en <a href="{{ url_for('social_index') }}">Social</a> → detalle de cuenta → "Generar ideas con IA".</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+        <div class="integration-icon" style="background:#d97757;color:#fff"><i class="bi bi-stars"></i></div>
+        <div>
+          <div class="fw-bold">Claude AI (ideas de contenido — de pago)</div>
+          <div class="small text-muted">Mejor calidad · opcional, requiere presupuesto</div>
+        </div>
+        {% if settings.anthropic_api_key %}<span class="badge bg-success ms-auto">Configurado</span>
+        {% else %}<span class="badge bg-secondary ms-auto">Não configurado</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info small py-2 mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Crea una API key en <a href="https://console.anthropic.com" target="_blank" class="alert-link">console.anthropic.com</a>.
+          Claude (Opus 4.7) mira las imágenes reales de tus posts y genera crítica + ideas listas para publicar.
+        </div>
+        <form method="POST" action="{{ url_for('social_save_anthropic_key') }}">
+          <label class="form-label small fw-semibold">API Key (sk-ant-...)</label>
+          <div class="input-group mb-3">
+            <input type="password" name="anthropic_api_key" id="anthropicKey" class="form-control form-control-sm"
+                   value="{{ settings.anthropic_api_key or '' }}" placeholder="sk-ant-...">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleVis('anthropicKey',this)"><i class="bi bi-eye"></i></button>
+          </div>
+          <button type="submit" class="btn btn-sm w-100 text-white" style="background:#d97757"><i class="bi bi-save me-1"></i>Salvar key</button>
+        </form>
+        <div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Se usa en <a href="{{ url_for('social_index') }}">Social</a> → detalle de cuenta → "Generar ideas con IA".</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom fw-semibold py-3"><i class="bi bi-info-circle me-2 text-secondary"></i>Análisis disponible por red</div>
+      <div class="card-body small text-muted">
+        <p class="mb-1"><strong class="text-dark"><i class="bi bi-instagram text-danger me-1"></i>Instagram:</strong> perfil, crecimiento, engagement, top posts, hashtags por engagement, mejores horas/días, temas y competidores.</p>
+        <p class="mb-1"><strong class="text-dark"><i class="bi bi-facebook text-primary me-1"></i>Facebook:</strong> páginas propias — seguidores, posts, reacciones, comentarios, shares.</p>
+        <p class="mb-0"><strong class="text-dark"><i class="bi bi-tiktok me-1"></i>TikTok:</strong> tu cuenta — seguidores, vídeos, views, likes, comentarios, shares. (La API oficial solo da tu propia cuenta, no competidores.)</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Comparison table -->
 <div class="row mt-4">
   <div class="col-12">
@@ -255,6 +577,21 @@
     const el = document.getElementById(id);
     el.type = el.type === 'password' ? 'text' : 'password';
     btn.innerHTML = el.type === 'password' ? '<i class="bi bi-eye"></i>' : '<i class="bi bi-eye-slash"></i>';
+  }
+
+  // GA4 properties
+  if (document.getElementById('ga4Props')) {
+    fetch('/api/ga4/properties').then(r => r.json()).then(data => {
+      const box = document.getElementById('ga4Props');
+      if (data.error) { box.innerHTML = '<span class="text-danger">' + data.error + '</span>'; return; }
+      if (!data.length) { box.innerHTML = '<em>Sin properties encontradas.</em>'; return; }
+      box.innerHTML = data.map(p =>
+        '<div class="d-flex justify-content-between py-1 border-bottom">' +
+        '<div><strong>' + p.property_name + '</strong> <span class="text-muted">· ' + p.account + '</span></div>' +
+        '<code class="small">ID: ' + p.property_id + '</code>' +
+        '</div>'
+      ).join('');
+    }).catch(e => { document.getElementById('ga4Props').innerHTML = '<span class="text-danger">Error: ' + e.message + '</span>'; });
   }
 
   function testSerpApi() {

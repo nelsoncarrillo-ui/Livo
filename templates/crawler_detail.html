@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Crawl · {{ crawl.start_url }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <a href="{{ url_for('crawler_index') }}" class="text-info text-decoration-none small">
+      <i class="bi bi-arrow-left me-1"></i>Voltar
+    </a>
+    <h5 class="mb-0 mt-1 fw-bold text-white text-break">
+      <i class="bi bi-diagram-3 me-2"></i>{{ crawl.start_url }}
+    </h5>
+    <small class="text-muted">{{ crawl.started_at }} · {{ crawl.domain }}</small>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('crawler_delete', crawl_id=crawl.id) }}"
+          onsubmit="return confirm('Eliminar este crawl?');">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary"><div class="card-body text-center py-3">
+      <div class="stat-icon text-info"><i class="bi bi-activity"></i></div>
+      <div class="stat-value" id="statStatus">
+        {% if crawl.status == 'completed' %}<span class="text-success">completo</span>
+        {% elif crawl.status == 'running' or crawl.status == 'queued' %}<span class="text-warning">corriendo</span>
+        {% else %}<span class="text-danger">{{ crawl.status }}</span>{% endif %}
+      </div>
+      <div class="stat-label">Estado</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary"><div class="card-body text-center py-3">
+      <div class="stat-icon text-success"><i class="bi bi-check-circle"></i></div>
+      <div class="stat-value text-success" id="statDone">{{ crawl.pages_done }}</div>
+      <div class="stat-label">/ {{ crawl.max_pages }} páginas</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary"><div class="card-body text-center py-3">
+      <div class="stat-icon text-warning"><i class="bi bi-exclamation-circle"></i></div>
+      <div class="stat-value text-warning" id="statFailed">{{ crawl.pages_failed }}</div>
+      <div class="stat-label">Fallidos</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary"><div class="card-body text-center py-3">
+      <div class="stat-icon text-info"><i class="bi bi-speedometer"></i></div>
+      <div class="stat-value" id="statAvg">
+        {% if crawl.avg_score is not none %}
+          {% set sc = crawl.avg_score|round(0)|int %}
+          <span class="{% if sc >= 80 %}text-success{% elif sc >= 50 %}text-warning{% else %}text-danger{% endif %}">{{ sc }}</span>
+        {% else %}—{% endif %}
+      </div>
+      <div class="stat-label">Score medio</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card bg-dark border-secondary"><div class="card-body py-3">
+      <div class="d-flex align-items-center mb-1">
+        <small class="text-muted text-uppercase">Profundidad / JS</small>
+        <span class="ms-auto badge bg-secondary">depth ≤ {{ crawl.max_depth }}</span>
+        {% if crawl.render_js %}<span class="ms-1 badge bg-info text-dark"><i class="bi bi-browser-chrome me-1"></i>JS</span>{% endif %}
+      </div>
+      <div id="liveRow" class="small text-light" style="display:{% if crawl.status in ['running', 'queued'] %}block{% else %}none{% endif %}">
+        <i class="bi bi-arrow-clockwise me-1 text-info"></i>Procesando: <span id="currentUrl" class="text-info text-truncate d-inline-block" style="max-width:300px;vertical-align:bottom">—</span>
+        <div class="text-muted small">cola: <span id="queueCount">—</span> · vistos: <span id="seenCount">—</span></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{% set dup = crawl.duplicates %}
+{% if dup and dup.summary %}
+<div class="card bg-dark border-secondary mb-3">
+  <div class="card-header border-secondary">
+    <i class="bi bi-files me-2 text-warning"></i><span class="fw-bold text-white">Problemas cross-page (duplicados y faltantes)</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-2 text-center mb-3">
+      {% set s = dup.summary %}
+      {% for label, val, color in [
+        ('Titles duplicados', s.duplicate_titles, 'danger'),
+        ('Meta desc. duplicadas', s.duplicate_descriptions, 'warning'),
+        ('Sin title', s.missing_title, 'danger'),
+        ('Sin meta desc.', s.missing_description, 'warning'),
+        ('Sin H1', s.missing_h1, 'warning')] %}
+      <div class="col">
+        <div class="border border-secondary rounded py-2">
+          <div class="fw-bold {% if val %}text-{{ color }}{% else %}text-success{% endif %}" style="font-size:1.4rem">{{ val }}</div>
+          <div class="small text-muted">{{ label }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if dup.duplicate_titles %}
+      <details class="mb-2">
+        <summary class="text-warning small" style="cursor:pointer">Ver titles duplicados ({{ dup.duplicate_titles|length }})</summary>
+        <div class="mt-2" style="max-height:240px;overflow:auto">
+          {% for d in dup.duplicate_titles %}
+            <div class="border-bottom border-secondary py-1">
+              <div class="small text-light">"{{ d.value }}" <span class="badge bg-danger">{{ d.count }} páginas</span></div>
+              {% for u in d.urls %}<div class="small text-muted ps-3">{{ u }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+    {% if dup.duplicate_descriptions %}
+      <details>
+        <summary class="text-warning small" style="cursor:pointer">Ver meta descriptions duplicadas ({{ dup.duplicate_descriptions|length }})</summary>
+        <div class="mt-2" style="max-height:240px;overflow:auto">
+          {% for d in dup.duplicate_descriptions %}
+            <div class="border-bottom border-secondary py-1">
+              <div class="small text-light">"{{ d.value[:120] }}" <span class="badge bg-warning text-dark">{{ d.count }}</span></div>
+              {% for u in d.urls %}<div class="small text-muted ps-3">{{ u }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex align-items-center gap-3 mb-2">
+  <h6 class="text-secondary text-uppercase small mb-0">Páginas crawleadas <span id="pageTotal">({{ pages|length }})</span></h6>
+  <input type="text" id="filter" class="form-control form-control-sm bg-dark text-white border-secondary"
+         placeholder="Filtrar por URL o title..." style="max-width:320px">
+  <select id="sevFilter" class="form-select form-select-sm bg-dark text-white border-secondary" style="max-width:200px">
+    <option value="">Todos los niveles</option>
+    <option value="critical">Con críticos</option>
+    <option value="warning">Con avisos</option>
+    <option value="low_score">Score &lt; 50</option>
+    <option value="errors">Con error</option>
+  </select>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-dark table-hover table-sm align-middle" id="pagesTable">
+    <thead>
+      <tr>
+        <th>D</th>
+        <th>URL</th>
+        <th>Title</th>
+        <th class="text-center">HTTP</th>
+        <th class="text-center">Score</th>
+        <th class="text-center">C</th>
+        <th class="text-center">W</th>
+        <th class="text-center">I</th>
+        <th class="text-center">Links int.</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="pagesBody">
+    {% for p in pages %}
+      <tr data-url="{{ p.url|lower }}" data-title="{{ (p.title or '')|lower }}"
+          data-crit="{{ p.critical_count }}" data-warn="{{ p.warning_count }}"
+          data-score="{{ p.score or 0 }}" data-error="{{ '1' if p.error else '0' }}">
+        <td class="text-muted small">{{ p.depth }}</td>
+        <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          <a href="{{ p.url }}" target="_blank" rel="noopener" class="text-info">{{ p.url }}</a>
+        </td>
+        <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.title or (p.error and ('⚠ ' + p.error)) or '—' }}</td>
+        <td class="text-center">
+          {% if p.status_code and p.status_code < 300 %}<span class="badge bg-success">{{ p.status_code }}</span>
+          {% elif p.status_code and p.status_code < 400 %}<span class="badge bg-warning text-dark">{{ p.status_code }}</span>
+          {% elif p.status_code %}<span class="badge bg-danger">{{ p.status_code }}</span>
+          {% else %}<span class="text-muted small">—</span>{% endif %}
+        </td>
+        <td class="text-center">
+          {% if p.score is not none %}
+            {% set sc = p.score %}
+            {% if sc >= 80 %}<span class="badge bg-success">{{ sc }}</span>
+            {% elif sc >= 50 %}<span class="badge bg-warning text-dark">{{ sc }}</span>
+            {% else %}<span class="badge bg-danger">{{ sc }}</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="text-center">{% if p.critical_count %}<span class="badge bg-danger">{{ p.critical_count }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        <td class="text-center">{% if p.warning_count %}<span class="badge bg-warning text-dark">{{ p.warning_count }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        <td class="text-center">{% if p.improvement_count %}<span class="badge bg-info text-dark">{{ p.improvement_count }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        <td class="text-center small text-muted">{{ p.internal_links or 0 }}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-light view-findings" data-bs-toggle="modal" data-bs-target="#findingsModal"
+                  data-url="{{ p.url }}" data-findings='{{ p.findings_json or "[]" }}'>
+            <i class="bi bi-list-ul"></i>
+          </button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Modal de findings -->
+<div class="modal fade" id="findingsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content bg-dark text-light border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title text-break" id="modalUrl">URL</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const crawlId = {{ crawl.id }};
+const crawlStatus = {{ crawl.status | tojson }};
+
+// Filtros
+const filter = document.getElementById('filter');
+const sevFilter = document.getElementById('sevFilter');
+function applyFilters() {
+  const q = filter.value.toLowerCase();
+  const sev = sevFilter.value;
+  let visible = 0;
+  document.querySelectorAll('#pagesBody tr').forEach(tr => {
+    let show = true;
+    if (q && !(tr.dataset.url.includes(q) || tr.dataset.title.includes(q))) show = false;
+    if (sev === 'critical' && parseInt(tr.dataset.crit) === 0) show = false;
+    if (sev === 'warning' && parseInt(tr.dataset.warn) === 0) show = false;
+    if (sev === 'low_score' && parseInt(tr.dataset.score) >= 50) show = false;
+    if (sev === 'errors' && tr.dataset.error === '0') show = false;
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('pageTotal').textContent = `(${visible})`;
+}
+filter.addEventListener('input', applyFilters);
+sevFilter.addEventListener('change', applyFilters);
+
+// Modal findings
+const sevMeta = {
+  critical: {color: 'danger', icon: 'exclamation-octagon-fill', label: 'Críticos'},
+  warning:  {color: 'warning', icon: 'exclamation-triangle-fill', label: 'Avisos'},
+  improvement: {color: 'info', icon: 'lightbulb-fill', label: 'Mejoras'},
+  info: {color: 'secondary', icon: 'info-circle-fill', label: 'Info'},
+};
+document.querySelectorAll('.view-findings').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const url = btn.dataset.url;
+    const findings = JSON.parse(btn.dataset.findings || '[]');
+    document.getElementById('modalUrl').textContent = url;
+    const body = document.getElementById('modalBody');
+    if (!findings.length) {
+      body.innerHTML = '<div class="alert alert-success mb-0">Sin hallazgos.</div>';
+      return;
+    }
+    const grouped = {};
+    findings.forEach(f => { (grouped[f.severity] = grouped[f.severity] || []).push(f); });
+    let html = '';
+    for (const sev of ['critical','warning','improvement','info']) {
+      if (!grouped[sev]) continue;
+      const m = sevMeta[sev];
+      html += `<h6 class="text-${m.color} text-uppercase small fw-bold mt-3"><i class="bi bi-${m.icon} me-1"></i>${m.label} (${grouped[sev].length})</h6>`;
+      grouped[sev].forEach(f => {
+        const textColorClass = (m.color === 'warning' || m.color === 'info') ? 'text-dark' : '';
+        html += `<div class="card bg-dark border-${m.color} mb-2"><div class="card-body py-2 px-3">
+          <div class="d-flex gap-2 align-items-start">
+            <span class="badge bg-${m.color} ${textColorClass} flex-shrink-0">${f.code}</span>
+            <div class="flex-grow-1"><div class="text-light">${escapeHtml(f.message)}</div>${f.detail ? `<pre class="mt-2 mb-0 small text-muted bg-black p-2 rounded" style="max-height:160px;overflow:auto">${escapeHtml(JSON.stringify(f.detail, null, 2))}</pre>` : ''}</div>
+          </div>
+        </div></div>`;
+      });
+    }
+    body.innerHTML = html;
+  });
+});
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Live status polling
+async function pollStatus() {
+  try {
+    const r = await fetch(`/api/crawler/status/${crawlId}`);
+    const d = await r.json();
+    document.getElementById('statDone').textContent = d.pages_done;
+    document.getElementById('statFailed').textContent = d.pages_failed;
+    if (d.live && d.live.current) {
+      document.getElementById('currentUrl').textContent = d.live.current;
+      document.getElementById('queueCount').textContent = d.live.queue ?? '—';
+      document.getElementById('seenCount').textContent = d.live.total_seen ?? '—';
+    }
+    if (d.db_status === 'completed' || d.db_status === 'error') {
+      // recarga para mostrar todas las páginas finales
+      setTimeout(() => location.reload(), 1200);
+      return;
+    }
+    setTimeout(pollStatus, 2000);
+  } catch (e) {
+    setTimeout(pollStatus, 3000);
+  }
+}
+if (crawlStatus === 'running' || crawlStatus === 'queued') {
+  pollStatus();
+}
+</script>
+{% endblock %}

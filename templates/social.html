@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Social · Instagram{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0 fw-bold text-white"><i class="bi bi-instagram text-danger me-2"></i>Social — Instagram</h4>
+    <small class="text-muted">Análisis de perfil, crecimiento, posts, hashtags y competidores</small>
+  </div>
+  {% if ig_connected %}
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      {% if ig_available and ig_available|length > 1 %}
+        <select id="accountSwitcher" class="form-select form-select-sm bg-dark text-white border-secondary" style="min-width:220px">
+          {% for a in ig_available %}
+            <option value="{{ a.ig_id }}" {% if a.ig_id == ig_active_id %}selected{% endif %}>
+              @{{ a.username }}{% if a.followers_count %} · {{ a.followers_count }} seg.{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <span class="badge bg-success px-3 py-2"><i class="bi bi-check-circle me-1"></i>@{{ ig_username }}</span>
+      {% endif %}
+      <button id="syncBtn" class="btn btn-sm btn-danger"><i class="bi bi-arrow-clockwise me-1"></i>Sincronizar cuenta activa</button>
+    </div>
+  {% else %}
+    <a href="{{ url_for('integrations') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-instagram me-1"></i>Conectar Instagram</a>
+  {% endif %}
+</div>
+
+<div id="syncStatus" class="alert d-none"></div>
+
+<!-- Acciones por plataforma -->
+<div class="row g-2 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="d-flex align-items-center mb-2"><i class="bi bi-instagram fs-5 me-2" style="color:#dc2743"></i><span class="fw-bold text-white">Instagram</span>
+        {% if ig_connected %}<span class="badge bg-success ms-auto">conectado</span>{% else %}<span class="badge bg-secondary ms-auto">off</span>{% endif %}
+      </div>
+      {% if ig_connected %}<div class="small text-muted">Usa el selector y "Sincronizar" arriba, o analiza competidores abajo.</div>
+      {% else %}<a href="{{ url_for('integrations') }}" class="btn btn-sm btn-outline-danger w-100">Conectar</a>{% endif %}
+    </div></div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="d-flex align-items-center mb-2"><i class="bi bi-facebook fs-5 me-2" style="color:#1877f2"></i><span class="fw-bold text-white">Facebook</span>
+        {% if meta_connected %}<span class="badge bg-success ms-auto">Meta conectado</span>{% else %}<span class="badge bg-secondary ms-auto">off</span>{% endif %}
+      </div>
+      {% if meta_connected %}
+        <div class="input-group input-group-sm">
+          <select id="fbPageSel" class="form-select"><option value="">Cargar páginas...</option></select>
+          <button id="fbSyncBtn" class="btn btn-primary" disabled><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      {% else %}<a href="{{ url_for('integrations') }}" class="btn btn-sm btn-outline-primary w-100">Conectar Meta</a>{% endif %}
+    </div></div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="d-flex align-items-center mb-2"><i class="bi bi-tiktok fs-5 me-2"></i><span class="fw-bold text-white">TikTok</span>
+        {% if tt_connected %}<span class="badge bg-success ms-auto">conectado</span>{% else %}<span class="badge bg-secondary ms-auto">off</span>{% endif %}
+      </div>
+      {% if tt_connected %}<button id="ttSyncBtn" class="btn btn-sm btn-dark w-100"><i class="bi bi-arrow-clockwise me-1"></i>Sincronizar TikTok</button>
+      {% else %}<a href="{{ url_for('integrations') }}" class="btn btn-sm btn-outline-light w-100">Conectar TikTok</a>{% endif %}
+    </div></div>
+  </div>
+</div>
+
+{% if not ig_connected and not tt_connected and not meta_connected %}
+<div class="card bg-dark border-secondary">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-instagram text-danger" style="font-size:3rem"></i>
+    <h5 class="text-white mt-3">Conecta tu Instagram Business</h5>
+    <p class="text-muted">Para analizar tu cuenta y la de competidores necesitas conectar una cuenta de Instagram Business/Creator vía Facebook.</p>
+    <a href="{{ url_for('integrations') }}" class="btn btn-danger"><i class="bi bi-plug me-1"></i>Ir a Integrações</a>
+  </div>
+</div>
+{% else %}
+
+<!-- Analizar competidor (solo IG) -->
+{% if ig_connected %}
+<div class="card bg-dark border-secondary mb-4">
+  <div class="card-body">
+    <label class="form-label small text-muted text-uppercase">Analizar otra cuenta de Instagram (competidor)</label>
+    <form id="discoverForm" class="d-flex gap-2">
+      <div class="input-group" style="max-width:420px">
+        <span class="input-group-text bg-dark text-muted border-secondary">@</span>
+        <input type="text" id="competitorUsername" class="form-control bg-dark text-white border-secondary" placeholder="nombredeusuario" required>
+      </div>
+      <button type="submit" class="btn btn-primary" id="discoverBtn"><i class="bi bi-search me-1"></i>Analizar</button>
+    </form>
+    <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Solo funciona con cuentas Business/Creator públicas (limitación de la API oficial de Instagram).</small>
+    <div id="discoverStatus" class="mt-2 small"></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Comparativa -->
+<div class="card bg-dark border-secondary mb-4">
+  <div class="card-header border-secondary d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-bar-chart-steps me-2 text-info"></i>Comparativa de cuentas</span>
+  </div>
+  <div class="card-body p-0">
+    {% if not accounts %}
+      <div class="text-center text-muted py-4">Aún no hay cuentas. Sincroniza la tuya o analiza un competidor.</div>
+    {% else %}
+    <table class="table table-dark table-hover mb-0 align-middle">
+      <thead>
+        <tr>
+          <th>Cuenta</th>
+          <th class="text-end">Seguidores</th>
+          <th class="text-end">Posts</th>
+          <th class="text-end">Engagement</th>
+          <th class="text-center">Tipo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr>
+          <td>
+            {% if a.profile_picture_url %}<img src="{{ a.profile_picture_url }}" width="32" height="32" class="rounded-circle me-2" style="object-fit:cover">{% endif %}
+            <a href="{{ url_for('social_account_detail', account_id=a.id) }}" class="text-info text-decoration-none fw-semibold">@{{ a.username }}</a>
+            {% if a.name %}<div class="small text-muted">{{ a.name }}</div>{% endif %}
+          </td>
+          <td class="text-end fw-bold">{{ '{:,}'.format(a.snapshot.followers or 0).replace(',','.') if a.snapshot else '—' }}</td>
+          <td class="text-end">{{ a.snapshot.media_count if a.snapshot else '—' }}</td>
+          <td class="text-end">
+            {% if a.snapshot and a.snapshot.engagement_rate is not none %}
+              {% set er = a.snapshot.engagement_rate %}
+              <span class="badge {% if er >= 3 %}bg-success{% elif er >= 1 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ er }}%</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            {% if a.is_own %}<span class="badge bg-danger">Mía</span>{% else %}<span class="badge bg-secondary">Competidor</span>{% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('social_account_detail', account_id=a.id) }}" class="btn btn-sm btn-outline-light"><i class="bi bi-graph-up"></i></a>
+            <button class="btn btn-sm btn-outline-danger del-acc" data-id="{{ a.id }}" data-name="@{{ a.username }}"><i class="bi bi-trash3"></i></button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const switcher = document.getElementById('accountSwitcher');
+if (switcher) {
+  switcher.addEventListener('change', async () => {
+    const box = document.getElementById('syncStatus');
+    box.className = 'alert alert-info'; box.classList.remove('d-none');
+    box.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Cambiando cuenta activa...';
+    const fd = new FormData(); fd.append('ig_id', switcher.value);
+    try {
+      const r = await fetch('{{ url_for("social_ig_select") }}', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) { box.className='alert alert-warning'; box.textContent = d.error || 'Error'; return; }
+      box.className = 'alert alert-success';
+      box.innerHTML = `<i class="bi bi-check-circle me-1"></i>Cuenta activa: @${d.username}. Ahora pulsa "Sincronizar".`;
+    } catch (e) { box.className='alert alert-danger'; box.textContent = e.message; }
+  });
+}
+
+const syncBtn = document.getElementById('syncBtn');
+if (syncBtn) {
+  syncBtn.addEventListener('click', async () => {
+    const box = document.getElementById('syncStatus');
+    box.className = 'alert alert-info'; box.classList.remove('d-none');
+    box.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Sincronizando datos de Instagram...';
+    syncBtn.disabled = true;
+    try {
+      const r = await fetch('{{ url_for("social_ig_sync") }}', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok || d.error) { box.className='alert alert-warning'; box.textContent = d.error || 'Error'; syncBtn.disabled=false; return; }
+      box.className = 'alert alert-success';
+      box.innerHTML = `<i class="bi bi-check-circle me-1"></i>✓ @${d.username}: ${d.followers} seguidores, ${d.posts} posts, ER ${d.engagement_rate}%. Recargando...`;
+      setTimeout(() => location.reload(), 1500);
+    } catch (e) { box.className='alert alert-danger'; box.textContent = e.message; syncBtn.disabled=false; }
+  });
+}
+
+const discoverForm = document.getElementById('discoverForm');
+if (discoverForm) {
+  discoverForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const u = document.getElementById('competitorUsername').value.trim().replace(/^@/, '');
+    const status = document.getElementById('discoverStatus');
+    const btn = document.getElementById('discoverBtn');
+    if (!u) return;
+    status.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span>Analizando @' + u + '...</span>';
+    btn.disabled = true;
+    const fd = new FormData(); fd.append('username', u);
+    try {
+      const r = await fetch('{{ url_for("social_ig_discover") }}', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) { status.innerHTML = '<span class="text-danger">' + (d.error||'Error') + '</span>'; btn.disabled=false; return; }
+      status.innerHTML = '<span class="text-success">✓ @' + d.username + ': ' + d.followers + ' seguidores. Abriendo...</span>';
+      setTimeout(() => location.href = d.redirect, 900);
+    } catch (err) { status.innerHTML = '<span class="text-danger">' + err.message + '</span>'; btn.disabled=false; }
+  });
+}
+
+// ── Facebook: cargar páginas + sync
+const fbSel = document.getElementById('fbPageSel');
+const fbSyncBtn = document.getElementById('fbSyncBtn');
+if (fbSel) {
+  fetch('/api/social/facebook/pages').then(r => r.json()).then(d => {
+    if (d.error) { fbSel.innerHTML = '<option>Error: ' + d.error + '</option>'; return; }
+    if (!d.length) { fbSel.innerHTML = '<option>Sin páginas</option>'; return; }
+    fbSel.innerHTML = d.map(p => `<option value="${p.id}">${p.name} (${p.followers_count||p.fan_count||0} seg.)</option>`).join('');
+    fbSyncBtn.disabled = false;
+  }).catch(e => { fbSel.innerHTML = '<option>Error</option>'; });
+
+  fbSyncBtn.addEventListener('click', async () => {
+    const box = document.getElementById('syncStatus');
+    box.className='alert alert-info'; box.classList.remove('d-none');
+    box.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Sincronizando página de Facebook...';
+    fbSyncBtn.disabled = true;
+    const fd = new FormData(); fd.append('page_id', fbSel.value);
+    try {
+      const r = await fetch('/api/social/facebook/sync', { method:'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) { box.className='alert alert-warning'; box.textContent=d.error||'Error'; fbSyncBtn.disabled=false; return; }
+      box.className='alert alert-success';
+      box.innerHTML = `<i class="bi bi-check-circle me-1"></i>✓ ${d.name}: ${d.followers} seg, ${d.posts} posts. Abriendo...`;
+      setTimeout(()=>location.href=d.redirect, 1200);
+    } catch(e){ box.className='alert alert-danger'; box.textContent=e.message; fbSyncBtn.disabled=false; }
+  });
+}
+
+// ── TikTok sync
+const ttSyncBtn = document.getElementById('ttSyncBtn');
+if (ttSyncBtn) {
+  ttSyncBtn.addEventListener('click', async () => {
+    const box = document.getElementById('syncStatus');
+    box.className='alert alert-info'; box.classList.remove('d-none');
+    box.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Sincronizando TikTok...';
+    ttSyncBtn.disabled = true;
+    try {
+      const r = await fetch('/api/social/tiktok/sync', { method:'POST' });
+      const d = await r.json();
+      if (!r.ok || d.error) { box.className='alert alert-warning'; box.textContent=d.error||'Error'; ttSyncBtn.disabled=false; return; }
+      box.className='alert alert-success';
+      box.innerHTML = `<i class="bi bi-check-circle me-1"></i>✓ @${d.username}: ${d.followers} seg, ${d.videos} vídeos. Abriendo...`;
+      setTimeout(()=>location.href=d.redirect, 1200);
+    } catch(e){ box.className='alert alert-danger'; box.textContent=e.message; ttSyncBtn.disabled=false; }
+  });
+}
+
+document.querySelectorAll('.del-acc').forEach(b => {
+  b.addEventListener('click', async () => {
+    if (!confirm('Eliminar ' + b.dataset.name + '?')) return;
+    await fetch('/social/account/' + b.dataset.id + '/delete', { method: 'POST' });
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Bot View · {{ a.url }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <a href="{{ url_for('bot_view') }}" class="text-info text-decoration-none small">
+      <i class="bi bi-arrow-left me-1"></i>Voltar
+    </a>
+    <h5 class="mb-0 mt-1 fw-bold text-white text-break">{{ a.url }}</h5>
+    <small class="text-muted">{{ a.analysis_date }}</small>
+    {% if a.final_url and a.final_url != a.url %}
+      <div class="small text-warning"><i class="bi bi-arrow-right me-1"></i>Redirecionou para: <span class="text-break">{{ a.final_url }}</span></div>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('bot_view_delete', analysis_id=a.id) }}"
+          onsubmit="return confirm('Excluir esta análise?');">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+    </form>
+  </div>
+</div>
+
+{% if a.error %}
+<div class="alert alert-warning">{{ a.error }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary stat-card">
+      <div class="card-body text-center">
+        <div class="stat-icon text-info"><i class="bi bi-speedometer"></i></div>
+        {% set sc = a.score or 0 %}
+        <div class="stat-value {% if sc >= 80 %}text-success{% elif sc >= 50 %}text-warning{% else %}text-danger{% endif %}">{{ sc }}</div>
+        <div class="stat-label">Score</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary stat-card">
+      <div class="card-body text-center">
+        <div class="stat-icon text-danger"><i class="bi bi-exclamation-octagon"></i></div>
+        <div class="stat-value text-danger">{{ a.critical_count or 0 }}</div>
+        <div class="stat-label">Críticos</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary stat-card">
+      <div class="card-body text-center">
+        <div class="stat-icon text-warning"><i class="bi bi-exclamation-triangle"></i></div>
+        <div class="stat-value text-warning">{{ a.warning_count or 0 }}</div>
+        <div class="stat-label">Avisos</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary stat-card">
+      <div class="card-body text-center">
+        <div class="stat-icon text-info"><i class="bi bi-lightbulb"></i></div>
+        <div class="stat-value text-info">{{ a.improvement_count or 0 }}</div>
+        <div class="stat-label">Melhorias</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary stat-card">
+      <div class="card-body text-center">
+        <div class="stat-icon text-light"><i class="bi bi-hdd-network"></i></div>
+        <div class="stat-value">{{ a.status_code or '?' }}</div>
+        <div class="stat-label">HTTP</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card bg-dark border-secondary stat-card">
+      <div class="card-body text-center">
+        <div class="stat-icon text-light"><i class="bi bi-stopwatch"></i></div>
+        <div class="stat-value">{{ a.raw_fetch_ms or 0 }}<small class="text-muted" style="font-size:.6em">ms</small></div>
+        <div class="stat-label">Resposta</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set ps = a.extra.pagespeed if a.extra else None %}
+{% if ps and not ps.error %}
+<div class="card bg-dark border-secondary mb-3">
+  <div class="card-header border-secondary d-flex align-items-center">
+    <i class="bi bi-speedometer2 me-2 text-danger"></i><span class="fw-bold text-white">Core Web Vitals</span>
+    <span class="ms-2 small text-muted">{{ ps.strategy }} · {{ 'datos reales (CrUX)' if ps.field_data else 'datos de laboratorio' }}</span>
+    {% if ps.performance_score is not none %}
+      <span class="ms-auto badge {% if ps.performance_score >= 90 %}bg-success{% elif ps.performance_score >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">{{ ps.performance_score }}</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-2 text-center">
+      {% set vitals = [('LCP', ps.lcp, 's', 2.5, 4.0), ('CLS', ps.cls, '', 0.1, 0.25), ('INP', ps.inp, 'ms', 200, 500), ('FCP', ps.fcp, 's', 1.8, 3.0), ('TTFB', ps.ttfb, 'ms', 800, 1800)] %}
+      {% for label, val, unit, good, poor in vitals %}
+        {% if val is not none %}
+        <div class="col">
+          <div class="border border-secondary rounded py-2">
+            <div class="small text-muted">{{ label }}</div>
+            <div class="fw-bold {% if val <= good %}text-success{% elif val <= poor %}text-warning{% else %}text-danger{% endif %}" style="font-size:1.2rem">{{ val }}<small class="text-muted">{{ unit }}</small></div>
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% set lc = a.extra.link_check if a.extra else None %}
+{% if lc %}
+<div class="card bg-dark border-secondary mb-3">
+  <div class="card-header border-secondary">
+    <i class="bi bi-link-45deg me-2 text-info"></i><span class="fw-bold text-white">Enlaces ({{ lc.checked }} comprobados)</span>
+    {% if lc.broken %}<span class="ms-2 badge bg-danger">{{ lc.broken|length }} rotos</span>{% endif %}
+    {% if lc.redirected %}<span class="ms-1 badge bg-warning text-dark">{{ lc.redirected|length }} redirigen</span>{% endif %}
+    <span class="ms-1 badge bg-success">{{ lc.ok_count }} OK</span>
+  </div>
+  {% if lc.broken %}
+  <div class="card-body py-2">
+    <div class="small text-muted mb-1">Enlaces rotos:</div>
+    <div style="max-height:200px;overflow:auto">
+      {% for b in lc.broken %}
+        <div class="small"><span class="badge bg-danger me-1">{{ b.status }}</span><a href="{{ b.url }}" target="_blank" class="text-info">{{ b.url }}</a></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<ul class="nav nav-tabs mb-3" id="botViewTabs">
+  <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#findings"><i class="bi bi-clipboard-check me-1"></i>Achados ({{ a.findings|length }})</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#meta"><i class="bi bi-tags me-1"></i>Meta tags</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#raw"><i class="bi bi-file-earmark-code me-1"></i>HTML crudo</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#rendered"><i class="bi bi-browser-chrome me-1"></i>HTML renderizado</a></li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- FINDINGS por categoría -->
+  <div class="tab-pane fade show active" id="findings">
+    {% set sev_color = {'critical':'danger','warning':'warning','improvement':'info','info':'secondary'} %}
+    {% set cat_meta = {
+      'indexability': ('Indexabilidad', 'bi-search'),
+      'content': ('Contenido', 'bi-file-text'),
+      'headings': ('Encabezados', 'bi-type-h1'),
+      'images': ('Imágenes', 'bi-image'),
+      'links': ('Enlaces', 'bi-link-45deg'),
+      'international': ('Internacional', 'bi-globe'),
+      'social': ('Social / Open Graph', 'bi-share'),
+      'structured_data': ('Datos estructurados', 'bi-diagram-2'),
+      'security': ('Seguridad', 'bi-shield-lock'),
+      'performance': ('Rendimiento', 'bi-speedometer2'),
+      'url': ('URL', 'bi-link'),
+      'rendering': ('Renderizado JS', 'bi-braces'),
+      'general': ('General', 'bi-dot')
+    } %}
+    {% set cat_order = ['indexability','content','headings','images','links','rendering','performance','security','structured_data','social','international','url','general'] %}
+
+    {% if not a.findings %}
+      <div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Nenhum problema detectado!</div>
+    {% endif %}
+
+    {% for cat in cat_order %}
+      {% set group = a.findings | selectattr('category', 'equalto', cat) | list %}
+      {% if group %}
+        {% set clabel, cicon = cat_meta[cat] %}
+        {% set ncrit = group | selectattr('severity','equalto','critical') | list | length %}
+        {% set nwarn = group | selectattr('severity','equalto','warning') | list | length %}
+        <div class="card bg-dark border-secondary mb-3">
+          <div class="card-header border-secondary d-flex align-items-center">
+            <i class="bi {{ cicon }} me-2 text-info"></i>
+            <span class="fw-bold text-white">{{ clabel }}</span>
+            <span class="ms-2 text-muted small">{{ group|length }} hallazgo{{ 's' if group|length != 1 }}</span>
+            <span class="ms-auto">
+              {% if ncrit %}<span class="badge bg-danger me-1">{{ ncrit }} crít.</span>{% endif %}
+              {% if nwarn %}<span class="badge bg-warning text-dark">{{ nwarn }} avisos</span>{% endif %}
+            </span>
+          </div>
+          <div class="card-body py-2">
+            {% for f in group | sort(attribute='severity') %}
+              {% set color = sev_color[f.severity] %}
+              <div class="d-flex align-items-start gap-2 py-2 {% if not loop.last %}border-bottom border-secondary{% endif %}">
+                <span class="badge bg-{{ color }} {% if color in ['warning','info','secondary'] %}text-dark{% endif %} flex-shrink-0" style="min-width:70px">{{ f.severity[:4] }}</span>
+                <div class="flex-grow-1">
+                  <div class="text-light">{{ f.message }}</div>
+                  <code class="small text-muted">{{ f.code }}</code>
+                  {% if f.detail %}
+                    <pre class="mt-1 mb-0 small text-muted bg-black p-2 rounded" style="max-height:180px;overflow:auto">{{ f.detail | tojson(indent=2) }}</pre>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- META TAGS -->
+  <div class="tab-pane fade" id="meta">
+    <table class="table table-dark table-sm">
+      <tbody>
+        <tr><th style="width:200px">Title</th><td>{{ a.title or '—' }} <span class="text-muted small">({{ (a.title or '')|length }} car.)</span></td></tr>
+        <tr><th>Meta description</th><td>{{ a.meta_description or '—' }} <span class="text-muted small">({{ (a.meta_description or '')|length }} car.)</span></td></tr>
+        <tr><th>H1 (no HTML crudo)</th><td>{{ a.h1_count }}</td></tr>
+        <tr><th>Status HTTP</th><td>{{ a.status_code }}</td></tr>
+        <tr><th>URL final</th><td class="text-break">{{ a.final_url or a.url }}</td></tr>
+        <tr><th>Tempo fetch (raw)</th><td>{{ a.raw_fetch_ms or 0 }} ms · {{ ((a.raw_size_bytes or 0)/1024) | round(1) }} KB</td></tr>
+        <tr><th>Tempo render (JS)</th><td>{{ a.render_ms or '—' }} {% if a.render_ms %}ms · {{ ((a.rendered_size_bytes or 0)/1024) | round(1) }} KB{% endif %}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- RAW HTML -->
+  <div class="tab-pane fade" id="raw">
+    <p class="text-muted small">
+      <i class="bi bi-info-circle me-1"></i>
+      Isto é exatamente o que o Googlebot recebe na primeira passada (antes de executar JavaScript).
+    </p>
+    <pre class="bg-black text-light p-3 rounded" style="max-height:600px;overflow:auto;font-size:.78rem">{{ a.raw_html or '' }}</pre>
+  </div>
+
+  <!-- RENDERED HTML -->
+  <div class="tab-pane fade" id="rendered">
+    <p class="text-muted small">
+      <i class="bi bi-info-circle me-1"></i>
+      DOM completo após executar todo o JavaScript (Chromium headless com User-Agent de Googlebot mobile).
+    </p>
+    {% if not a.rendered_html %}
+      <div class="alert alert-warning">Render não disponível.</div>
+    {% else %}
+      <pre class="bg-black text-light p-3 rounded" style="max-height:600px;overflow:auto;font-size:.78rem">{{ a.rendered_html }}</pre>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
