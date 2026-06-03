@@ -294,3 +294,240 @@ def generate_ideas(provider: str, api_key: str, account: dict, top_posts, bottom
     if provider == "claude":
         return generate_ideas_claude(api_key, account, top_posts, bottom_posts, stats_context, max_images)
     return generate_ideas_gemini(api_key, account, top_posts, bottom_posts, stats_context, max_images)
+
+
+# ══ PLAN DE RECUPERACIÓN DE CUENTA ═══════════════════════════════════════════
+
+RECOVERY_SYSTEM = """Eres consultor senior de social media y community management con 10 años de \
+experiencia recuperando cuentas con engagement caído. Una marca te pide diagnosticar el porqué de su \
+caída de engagement y construir un PLAN DE RECUPERACIÓN realista por fases (4-8 semanas).
+
+Recibirás:
+- Datos del perfil y bio
+- Historial de seguidores (snapshots)
+- Sus mejores y peores publicaciones con IMAGEN real, caption y métricas
+- Contexto que la marca escribe libremente (qué publica en stories, qué creen que está fallando, \
+objetivos, etc.)
+
+Tu trabajo:
+1. DIAGNÓSTICO honesto — qué ves visualmente en los posts (estética, repetición, fatiga visual, \
+exceso de promoción), patrones de captions, tendencia de seguidores. Cita ejemplos concretos.
+2. CAUSAS RAÍZ — lista corta y específica, no de manual.
+3. PLAN POR FASES (4 a 6 fases) — tipo "Detox de promo → Reconexión con valor → Reactivación de \
+comunidad → Reintroducción balanceada de promo". Cada fase con semanas, objetivo, qué hacer / qué NO \
+hacer y 2-3 ejemplos de posts.
+4. MIX DE CONTENIDO objetivo: % educativo / entretenimiento / inspiracional / comunidad / promo.
+5. FRECUENCIA recomendada: feed/semana, reels/semana, stories/día (con justificación).
+6. ESTRATEGIA DE STORIES — si están haciendo spam de promociones, da el detox concreto: cuántas, qué \
+tipo, qué cortar ya.
+7. CALENDARIO de los PRIMEROS 14 DÍAS día a día (feed + stories de cada día).
+8. HITOS POR SEMANA — qué KPI medir y un objetivo realista por semana.
+9. LISTA EXPLÍCITA de lo que deben DEJAR DE HACER inmediatamente.
+
+Reglas:
+- Sé específico y honesto. Si abusan de promo, dilo claro.
+- Basa todo en lo que VES + contexto. Cita ejemplos visuales y de captions.
+- Cadencia realista: si están agotados de spam, no propongas más posts — propon menos pero mejores.
+- Si el contexto del usuario menciona algo, abórdalo directamente.
+- En español. Devuelve ÚNICAMENTE el JSON con el esquema solicitado."""
+
+RECOVERY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "diagnosis": {"type": "string", "description": "Diagnóstico honesto y específico, con ejemplos"},
+        "root_causes": {"type": "array", "items": {"type": "string"}, "description": "Causas raíz identificadas"},
+        "phases": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "number": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "weeks": {"type": "string", "description": "Ej: 'Semana 1-2'"},
+                    "goal": {"type": "string"},
+                    "rules_do": {"type": "array", "items": {"type": "string"}},
+                    "rules_dont": {"type": "array", "items": {"type": "string"}},
+                    "example_posts": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["number", "name", "weeks", "goal", "rules_do", "rules_dont", "example_posts"],
+                "additionalProperties": False,
+            },
+        },
+        "content_mix": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "Educativo, Entretenimiento, Inspiracional, Comunidad, Promo, UGC, etc."},
+                    "percent": {"type": "integer"},
+                    "description": {"type": "string"},
+                },
+                "required": ["category", "percent", "description"],
+                "additionalProperties": False,
+            },
+        },
+        "posting_frequency": {
+            "type": "object",
+            "properties": {
+                "feed_per_week": {"type": "integer"},
+                "reels_per_week": {"type": "integer"},
+                "stories_per_day": {"type": "integer"},
+                "notes": {"type": "string"},
+            },
+            "required": ["feed_per_week", "reels_per_week", "stories_per_day", "notes"],
+            "additionalProperties": False,
+        },
+        "stories_strategy": {"type": "string", "description": "Detox y nueva estrategia de stories"},
+        "first_14_days": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "day": {"type": "integer"},
+                    "date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "weekday": {"type": "string"},
+                    "feed": {"type": "string", "description": "Qué publicar en feed ese día (vacío si descanso)"},
+                    "stories": {"type": "string", "description": "Qué stories ese día"},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["day", "date", "weekday", "feed", "stories", "rationale"],
+                "additionalProperties": False,
+            },
+        },
+        "weekly_milestones": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "week": {"type": "integer"},
+                    "kpi": {"type": "string"},
+                    "target": {"type": "string"},
+                },
+                "required": ["week", "kpi", "target"],
+                "additionalProperties": False,
+            },
+        },
+        "stop_doing": {"type": "array", "items": {"type": "string"}, "description": "Lista de cosas a DEJAR de hacer inmediatamente"},
+    },
+    "required": ["diagnosis", "root_causes", "phases", "content_mix", "posting_frequency",
+                 "stories_strategy", "first_14_days", "weekly_milestones", "stop_doing"],
+    "additionalProperties": False,
+}
+
+
+def _build_recovery_header(account: dict, stats_context: str, snapshots_summary: str, user_context: str) -> str:
+    from datetime import date, timedelta
+    today = date.today()
+    end = today + timedelta(days=13)
+    header = (
+        f"CUENTA: @{account.get('username')} ({account.get('platform', 'instagram')})\n"
+        f"Nombre: {account.get('name') or '—'}\n"
+        f"Bio: {account.get('biography') or '—'}\n"
+        f"HOY: {today.isoformat()} ({['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][today.weekday()]})\n"
+        f"VENTANA PRIMEROS 14 DÍAS: {today.isoformat()} → {end.isoformat()}\n"
+    )
+    if snapshots_summary:
+        header += f"\nTendencia de seguidores:\n{snapshots_summary}\n"
+    if stats_context:
+        header += f"\nContexto de métricas:\n{stats_context}\n"
+    if user_context:
+        header += f"\nCONTEXTO QUE NOS DA LA MARCA (importante, abórdalo directamente):\n{user_context}\n"
+    header += "\nA continuación, publicaciones con su imagen real, caption y métricas:"
+    return header
+
+
+def generate_recovery_claude(api_key: str, account: dict, top_posts, bottom_posts,
+                             stats_context="", snapshots_summary="", user_context="",
+                             max_images=8) -> dict:
+    client = anthropic.Anthropic(api_key=api_key)
+    content = [{"type": "text", "text": _build_recovery_header(account, stats_context, snapshots_summary, user_context)}]
+    for fetched, line in _collect_posts(top_posts, bottom_posts, max_images):
+        if fetched:
+            content.append({"type": "image", "source": {
+                "type": "base64", "media_type": fetched[0], "data": fetched[1]}})
+        content.append({"type": "text", "text": line})
+    content.append({"type": "text", "text":
+        "Diagnostica y construye el plan de recuperación. Devuelve el JSON completo con el esquema."})
+
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=14000,
+        thinking={"type": "adaptive"},
+        system=[{"type": "text", "text": RECOVERY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": content}],
+        output_config={"format": {"type": "json_schema", "schema": RECOVERY_SCHEMA}},
+    )
+    text = next((b.text for b in resp.content if b.type == "text"), "{}")
+    data = json.loads(text)
+    data["_provider"] = "claude"
+    return data
+
+
+def generate_recovery_gemini(api_key: str, account: dict, top_posts, bottom_posts,
+                             stats_context="", snapshots_summary="", user_context="",
+                             max_images=8, model: str = None) -> dict:
+    import base64 as _b64
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+    parts = [types.Part.from_text(text=_build_recovery_header(account, stats_context, snapshots_summary, user_context))]
+    for fetched, line in _collect_posts(top_posts, bottom_posts, max_images):
+        if fetched:
+            parts.append(types.Part.from_bytes(
+                data=_b64.b64decode(fetched[1]), mime_type=fetched[0]))
+        parts.append(types.Part.from_text(text=line))
+    parts.append(types.Part.from_text(text="""
+Diagnostica y construye el plan de recuperación. Responde ÚNICAMENTE con un JSON válido con esta forma EXACTA:
+{
+  "diagnosis": "texto",
+  "root_causes": ["..."],
+  "phases": [{"number":1,"name":"","weeks":"","goal":"","rules_do":["..."],"rules_dont":["..."],"example_posts":["..."]}],
+  "content_mix": [{"category":"","percent":0,"description":""}],
+  "posting_frequency": {"feed_per_week":0,"reels_per_week":0,"stories_per_day":0,"notes":""},
+  "stories_strategy": "texto",
+  "first_14_days": [{"day":1,"date":"YYYY-MM-DD","weekday":"","feed":"","stories":"","rationale":""}],
+  "weekly_milestones": [{"week":1,"kpi":"","target":""}],
+  "stop_doing": ["..."]
+}
+first_14_days debe tener 14 entradas en orden cronológico (días 1 a 14)."""))
+
+    cfg = types.GenerateContentConfig(
+        system_instruction=RECOVERY_SYSTEM,
+        response_mime_type="application/json",
+        max_output_tokens=14000,
+    )
+
+    candidates = [model] if model else []
+    candidates += [m for m in GEMINI_FALLBACK_MODELS if m not in candidates]
+
+    last_err = None
+    for mdl in candidates:
+        try:
+            resp = client.models.generate_content(
+                model=mdl,
+                contents=[types.Content(role="user", parts=parts)],
+                config=cfg,
+            )
+            data = json.loads(resp.text)
+            data["_provider"] = "gemini"
+            data["_model"] = mdl
+            return data
+        except Exception as e:
+            msg = str(e)
+            last_err = e
+            if any(s in msg for s in ("RESOURCE_EXHAUSTED", "429", "NOT_FOUND", "404", "limit: 0", "not found")):
+                continue
+            raise
+    raise RuntimeError(f"Ningún modelo Gemini gratuito tiene cuota. Último error: {last_err}")
+
+
+def generate_recovery_plan(provider: str, api_key: str, account: dict, top_posts, bottom_posts,
+                           stats_context="", snapshots_summary="", user_context="",
+                           max_images=8) -> dict:
+    """Dispatcher para el plan de recuperación."""
+    if provider == "claude":
+        return generate_recovery_claude(api_key, account, top_posts, bottom_posts,
+                                        stats_context, snapshots_summary, user_context, max_images)
+    return generate_recovery_gemini(api_key, account, top_posts, bottom_posts,
+                                    stats_context, snapshots_summary, user_context, max_images)

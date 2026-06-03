@@ -2733,6 +2733,78 @@ def social_ai_ideas(account_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/social/ai-recovery-plan/<int:account_id>', methods=['POST'])
+def social_ai_recovery_plan(account_id):
+    """Plan de recuperación con IA: diagnóstico + fases + detox stories + calendario 14d."""
+    import social as S
+    import social_ai as SA
+    settings = load_settings()
+    gemini_key = settings.get('gemini_api_key', '')
+    claude_key = settings.get('anthropic_api_key', '')
+
+    provider = (request.form.get('provider') or '').strip()
+    if not provider:
+        provider = 'gemini' if gemini_key else ('claude' if claude_key else '')
+    api_key = gemini_key if provider == 'gemini' else claude_key
+    if not provider or not api_key:
+        return jsonify({'error': 'Configura una API key (Gemini gratis o Claude) en Integrações.'}), 400
+
+    user_context = (request.form.get('user_context') or '').strip()
+
+    conn = get_db()
+    acc = conn.execute('SELECT * FROM social_accounts WHERE id=?', (account_id,)).fetchone()
+    if not acc:
+        conn.close()
+        return jsonify({'error': 'Cuenta no encontrada'}), 404
+    acc = dict(acc)
+    posts = [dict(r) for r in conn.execute(
+        'SELECT * FROM social_posts WHERE account_id=? ORDER BY timestamp DESC', (account_id,)).fetchall()]
+    snapshots = [dict(r) for r in conn.execute(
+        'SELECT * FROM social_snapshots WHERE account_id=? ORDER BY date ASC', (account_id,)).fetchall()]
+    conn.close()
+
+    if len(posts) < 3:
+        return jsonify({'error': 'Necesito al menos 3 publicaciones sincronizadas.'}), 400
+
+    def eng(p):
+        return (p.get('like_count') or 0) + (p.get('comments_count') or 0)
+    ranked = sorted(posts, key=eng, reverse=True)
+    top = ranked[:6]
+    bottom = ranked[-3:] if len(ranked) > 6 else []
+
+    # Métricas + tendencia de seguidores
+    bt = S.best_time_analysis(posts)
+    by_type = S.engagement_by_type(posts)
+    ctx_parts = []
+    if bt.get('best_hours'):
+        ctx_parts.append('Mejores horas: ' + ', '.join(f"{h['hour']:02d}h" for h in bt['best_hours'][:3]))
+    if by_type:
+        ctx_parts.append('Formato top: ' + by_type[0]['type'])
+    stats_context = ' · '.join(ctx_parts)
+
+    snapshots_summary = ''
+    if snapshots:
+        first, last = snapshots[0], snapshots[-1]
+        delta = (last.get('followers') or 0) - (first.get('followers') or 0)
+        snapshots_summary = (
+            f"{first['date']}: {first.get('followers') or 0} seg → "
+            f"{last['date']}: {last.get('followers') or 0} seg (Δ {delta:+})"
+        )
+        if last.get('engagement_rate') is not None:
+            snapshots_summary += f" · ER actual: {last['engagement_rate']}%"
+
+    try:
+        result = SA.generate_recovery_plan(
+            provider, api_key, acc, top, bottom,
+            stats_context=stats_context,
+            snapshots_summary=snapshots_summary,
+            user_context=user_context,
+        )
+        return jsonify({'ok': True, 'result': result, 'provider': provider})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/social/compare')
 def social_compare():
     """Datos para tabla comparativa de todas las cuentas (último snapshot)."""
