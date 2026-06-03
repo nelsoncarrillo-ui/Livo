@@ -465,8 +465,79 @@ function renderAi(res) {
     </div></div></div>`;
   });
   html += '</div>';
+
+  // Parrilla 30 días
+  const cal = (res.content_calendar || []).slice().sort((a,b) => (a.date||'').localeCompare(b.date||''));
+  if (cal.length) {
+    const fmtColor = (f) => {
+      const k = (f||'').toLowerCase();
+      if (k.includes('reel') || k.includes('vide')) return 'bg-danger';
+      if (k.includes('carr') || k.includes('album')) return 'bg-warning text-dark';
+      if (k.includes('stor')) return 'bg-info text-dark';
+      return 'bg-primary';
+    };
+    html += '<hr class="border-secondary my-4">';
+    html += `<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+      <h6 class="text-info text-uppercase small mb-0"><i class="bi bi-calendar3 me-1"></i>Parrilla de contenido · próximos 30 días <span class="badge bg-secondary ms-2">${cal.length} posts</span></h6>
+      <button class="btn btn-sm btn-outline-light" onclick="exportCalendarCSV()"><i class="bi bi-download me-1"></i>Exportar CSV</button>
+    </div>`;
+    html += '<div class="row g-2" id="calendarGrid">';
+    cal.forEach((c, idx) => {
+      const safeIdx = idx;
+      html += `<div class="col-12">
+        <div class="card bg-dark border-secondary">
+          <div class="card-body py-2 px-3">
+            <div class="d-flex align-items-start gap-3 flex-wrap">
+              <div class="text-center" style="min-width:74px">
+                <div class="fw-bold text-white" style="font-size:1.1rem">${esc((c.date||'').slice(8,10))}</div>
+                <div class="small text-muted">${esc(c.weekday||'')} · ${esc((c.date||'').slice(5,7))}/${esc((c.date||'').slice(0,4))}</div>
+                <div class="badge bg-info text-dark mt-1">${esc(c.time||'')}</div>
+              </div>
+              <div class="flex-grow-1" style="min-width:220px">
+                <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                  <span class="badge ${fmtColor(c.format)}">${esc(c.format||'')}</span>
+                  <span class="fw-semibold text-white">${esc(c.topic||'')}</span>
+                </div>
+                <div class="small text-muted mb-1"><strong>Gancho:</strong> ${esc(c.hook||'')}</div>
+                <details>
+                  <summary class="small text-info" style="cursor:pointer">Ver caption + hashtags</summary>
+                  <div class="p-2 rounded mt-2" style="background:rgba(255,255,255,.04)">
+                    <div class="text-light small" style="white-space:pre-wrap">${esc(c.caption_example||'')}</div>
+                    <div class="mt-2">${(c.hashtags||[]).map(h => '<span class="badge bg-secondary me-1">#'+esc(h.replace(/^#/,''))+'</span>').join('')}</div>
+                    <div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>${esc(c.rationale||'')}</div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+    // store calendar for export
+    window._livoCalendar = cal;
+  }
+
   box.innerHTML = html;
   box.classList.remove('d-none');
+}
+
+function exportCalendarCSV() {
+  const cal = window._livoCalendar || [];
+  if (!cal.length) return;
+  const rows = [['date','weekday','time','format','topic','hook','caption','hashtags','rationale']];
+  cal.forEach(c => rows.push([
+    c.date||'', c.weekday||'', c.time||'', c.format||'', c.topic||'',
+    c.hook||'', (c.caption_example||'').replace(/\r?\n/g,' '),
+    (c.hashtags||[]).map(h=>'#'+h.replace(/^#/,'')).join(' '), c.rationale||''
+  ]));
+  const csv = rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), csv], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'parrilla-contenido-30d.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 {% if snapshots|length > 1 %}

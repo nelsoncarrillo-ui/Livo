@@ -22,14 +22,21 @@ Tu trabajo:
 1. MIRAR las imágenes con atención: estética, colores, composición, tipo de contenido (producto, \
 persona, lifestyle, texto sobre imagen, meme, infografía, etc.), calidad visual, coherencia de marca.
 2. Comparar qué tienen en común los posts de ALTO engagement vs los de BAJO — visualmente y en temática.
-3. Producir una crítica honesta y concreta, y luego IDEAS de publicaciones específicas y realizables \
-para esta cuenta, no genéricas.
+3. Producir una crítica honesta y concreta, IDEAS sueltas de publicaciones y una PARRILLA DE 30 DÍAS \
+(content calendar) con fechas reales y horarios ya distribuidos.
 
-Reglas:
+Reglas para la parrilla de 30 días:
+- Usa FECHAS REALES en formato YYYY-MM-DD a partir de la fecha de "HOY" que se te indique.
+- Distribúyelas según los mejores días/horas que detectes en sus datos (no fechas aleatorias).
+- Respeta una cadencia realista. Si la cuenta publica 2 veces por semana ahora, la parrilla puede \
+proponer subir a 3-4/semana, no 7. Total típico: 10-16 posts en 30 días.
+- Cada entrada debe ser distinta (alterna formatos y temas) y mantener coherencia de marca.
+- Indica el día de la semana en abreviado (Lun/Mar/Mié/Jue/Vie/Sáb/Dom).
+
+Reglas generales:
 - Sé específico y concreto. Nada de consejos de manual ("publica contenido de calidad").
 - Basa todo en lo que REALMENTE ves en las imágenes y en los datos. Cita ejemplos.
-- Las ideas deben ser ejecutables esta semana: formato, tema, gancho, ejemplo de caption real \
-(escríbelo completo, listo para publicar), hashtags y mejor horario.
+- Captions y ganchos deben estar listos para copiar/pegar, en español.
 - Responde SIEMPRE en español.
 - Devuelve únicamente el JSON con el esquema solicitado."""
 
@@ -58,8 +65,28 @@ OUTPUT_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "content_calendar": {
+            "type": "array",
+            "description": "Parrilla de 30 días con fechas y horas reales",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Fecha YYYY-MM-DD"},
+                    "weekday": {"type": "string", "description": "Abreviatura: Lun, Mar, Mié, Jue, Vie, Sáb, Dom"},
+                    "time": {"type": "string", "description": "HH:MM (24h)"},
+                    "format": {"type": "string", "description": "Reel, Carrusel, Imagen, Vídeo, Story"},
+                    "topic": {"type": "string", "description": "Tema corto del post"},
+                    "hook": {"type": "string", "description": "Gancho de apertura"},
+                    "caption_example": {"type": "string", "description": "Caption completo listo para publicar"},
+                    "hashtags": {"type": "array", "items": {"type": "string"}},
+                    "rationale": {"type": "string", "description": "Por qué este día/hora/contenido"},
+                },
+                "required": ["date", "weekday", "time", "format", "topic", "hook", "caption_example", "hashtags", "rationale"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["content_review", "visual_observations", "whats_working", "whats_not_working", "ideas"],
+    "required": ["content_review", "visual_observations", "whats_working", "whats_not_working", "ideas", "content_calendar"],
     "additionalProperties": False,
 }
 
@@ -97,10 +124,15 @@ def _post_line(p: dict, tag: str) -> str:
 
 
 def _build_account_header(account: dict, stats_context: str) -> str:
+    from datetime import date, timedelta
+    today = date.today()
+    end = today + timedelta(days=29)
     header = (
         f"CUENTA: @{account.get('username')} ({account.get('platform', 'instagram')})\n"
         f"Nombre: {account.get('name') or '—'}\n"
         f"Bio: {account.get('biography') or '—'}\n"
+        f"HOY: {today.isoformat()} ({['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][today.weekday()]})\n"
+        f"VENTANA PARRILLA: {today.isoformat()} → {end.isoformat()} (30 días)\n"
     )
     if stats_context:
         header += f"\nContexto de métricas:\n{stats_context}\n"
@@ -126,7 +158,9 @@ def _collect_posts(top_posts, bottom_posts, max_images):
 
 _FINAL_INSTRUCTION = (
     "Analiza el contenido visual y los datos. Devuelve el JSON con: content_review, "
-    "visual_observations, whats_working, whats_not_working e ideas (5-7 ideas concretas)."
+    "visual_observations, whats_working, whats_not_working, ideas (5-7 ideas concretas), "
+    "y content_calendar (parrilla de 30 días con 10-16 posts ya programados en fechas "
+    "y horas reales basadas en los mejores días/horas que detectes en los datos)."
 )
 
 
@@ -145,7 +179,7 @@ def generate_ideas_claude(api_key: str, account: dict, top_posts, bottom_posts,
 
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=8000,
+        max_tokens=12000,
         thinking={"type": "adaptive"},
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content}],
@@ -203,14 +237,19 @@ def generate_ideas_gemini(api_key: str, account: dict, top_posts, bottom_posts,
         parts.append(types.Part.from_text(text=line))
     parts.append(types.Part.from_text(text=_FINAL_INSTRUCTION + """
 
-Responde ÚNICAMENTE con un JSON válido con esta forma exacta:
+Responde ÚNICAMENTE con un JSON válido con esta forma EXACTA:
 {
   "content_review": "texto",
   "visual_observations": "texto",
   "whats_working": ["..."],
   "whats_not_working": ["..."],
-  "ideas": [{"title":"","format":"","topic":"","hook":"","caption_example":"","hashtags":["..."],"best_time":"","rationale":""}]
-}"""))
+  "ideas": [{"title":"","format":"","topic":"","hook":"","caption_example":"","hashtags":["..."],"best_time":"","rationale":""}],
+  "content_calendar": [
+    {"date":"YYYY-MM-DD","weekday":"Lun|Mar|Mié|Jue|Vie|Sáb|Dom","time":"HH:MM","format":"","topic":"","hook":"","caption_example":"","hashtags":["..."],"rationale":""}
+  ]
+}
+
+content_calendar debe tener 10-16 entradas con fechas REALES dentro de la ventana indicada arriba, ordenadas cronológicamente."""))
 
     cfg = types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
