@@ -2,6 +2,68 @@
 {% block title %}@{{ acc.username }} · Instagram{% endblock %}
 
 {% block content %}
+<style>
+  .print-only { display: none; }
+  @media print {
+    /* En modo "printing-recovery" oculta TODO menos el plan generado */
+    body.printing-recovery > * { visibility: hidden !important; }
+    body.printing-recovery #recResult,
+    body.printing-recovery #recResult * { visibility: visible !important; }
+    body.printing-recovery #recResult {
+      position: absolute !important;
+      left: 0 !important; top: 0 !important;
+      width: 100% !important;
+      padding: 20px !important;
+      background: white !important;
+      color: #0f172a !important;
+    }
+    /* Forzar contraste para impresión */
+    body.printing-recovery #recResult,
+    body.printing-recovery #recResult .card,
+    body.printing-recovery #recResult .card-body,
+    body.printing-recovery #recResult .table,
+    body.printing-recovery #recResult .table-dark {
+      background: white !important;
+      color: #0f172a !important;
+      border-color: #cbd5e1 !important;
+      --bs-table-color: #0f172a !important;
+      --bs-table-bg: white !important;
+    }
+    body.printing-recovery #recResult .text-light,
+    body.printing-recovery #recResult .text-white,
+    body.printing-recovery #recResult .fw-bold,
+    body.printing-recovery #recResult h1,
+    body.printing-recovery #recResult h2,
+    body.printing-recovery #recResult h3,
+    body.printing-recovery #recResult h4,
+    body.printing-recovery #recResult h5,
+    body.printing-recovery #recResult h6,
+    body.printing-recovery #recResult li,
+    body.printing-recovery #recResult p,
+    body.printing-recovery #recResult td,
+    body.printing-recovery #recResult th { color: #0f172a !important; }
+    body.printing-recovery #recResult .text-muted { color: #64748b !important; }
+    body.printing-recovery #recResult .text-success { color: #16a34a !important; }
+    body.printing-recovery #recResult .text-warning { color: #d97706 !important; }
+    body.printing-recovery #recResult .text-danger  { color: #dc2626 !important; }
+    body.printing-recovery #recResult .text-info    { color: #0891b2 !important; }
+    /* Mantener color en badges/progress */
+    body.printing-recovery #recResult .badge,
+    body.printing-recovery #recResult .progress,
+    body.printing-recovery #recResult .progress-bar {
+      print-color-adjust: exact !important;
+      -webkit-print-color-adjust: exact !important;
+    }
+    /* Ocultar el botón Descargar PDF en la impresión */
+    body.printing-recovery #recResult .no-print { display: none !important; }
+    /* Mostrar header solo en print */
+    body.printing-recovery #recResult .print-only { display: block !important; }
+    /* Evitar cortar tarjetas a la mitad */
+    body.printing-recovery #recResult .card,
+    body.printing-recovery #recResult table { page-break-inside: avoid; break-inside: avoid; }
+    @page { margin: 12mm; }
+  }
+</style>
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-3">
     {% if acc.profile_picture_url %}<img src="{{ acc.profile_picture_url }}" width="56" height="56" class="rounded-circle" style="object-fit:cover">{% endif %}
@@ -585,6 +647,24 @@ function renderRecovery(p) {
   const box = document.getElementById('recResult');
   let html = '';
 
+  // Botón Descargar PDF (no aparece en el PDF gracias a .no-print)
+  html += `<div class="d-flex justify-content-end mb-2 no-print">
+    <button class="btn btn-sm btn-outline-light" onclick="downloadRecoveryPDF()">
+      <i class="bi bi-file-earmark-pdf me-1"></i>Descargar PDF
+    </button>
+  </div>`;
+
+  // Cabecera del PDF (solo visible al imprimir)
+  const accUser = '{{ acc.username }}';
+  const accName = '{{ acc.name|default("") }}';
+  const today = new Date().toLocaleDateString('es-ES', { day:'numeric', month:'long', year:'numeric' });
+  html += `<div class="print-only" style="border-bottom:2px solid #0f172a;padding-bottom:8px;margin-bottom:16px">
+    <h1 style="margin:0;font-size:22px">Plan de recuperación de cuenta</h1>
+    <div style="font-size:14px;color:#475569;margin-top:4px">
+      @${esc(accUser)}${accName ? ' · ' + esc(accName) : ''} · Generado el ${esc(today)}
+    </div>
+  </div>`;
+
   // Diagnóstico
   html += `<div class="card bg-dark border-danger mb-3"><div class="card-body">
     <h6 class="text-danger text-uppercase small"><i class="bi bi-clipboard-pulse me-1"></i>Diagnóstico</h6>
@@ -694,6 +774,22 @@ function renderRecovery(p) {
 
   box.innerHTML = html;
   box.classList.remove('d-none');
+}
+
+function downloadRecoveryPDF() {
+  document.body.classList.add('printing-recovery');
+  // Pequeño delay para que el navegador aplique los estilos antes de abrir el diálogo
+  setTimeout(() => {
+    window.print();
+    // Quitar la clase al cerrarse el diálogo (afterprint dispara incluso si cancelan)
+    const cleanup = () => {
+      document.body.classList.remove('printing-recovery');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    // Fallback por si afterprint no dispara en algún navegador
+    setTimeout(() => document.body.classList.remove('printing-recovery'), 5000);
+  }, 80);
 }
 
 function exportCalendarCSV() {
