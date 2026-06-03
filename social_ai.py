@@ -10,6 +10,36 @@ import requests
 import anthropic
 
 
+# Errores recuperables: cuota (saltar modelo), 503/overload (reintentar mismo modelo).
+_GEMINI_QUOTA_MARKERS = ('RESOURCE_EXHAUSTED', '429', 'NOT_FOUND', '404', 'limit: 0', 'not found')
+_GEMINI_TRANSIENT_MARKERS = ('503', 'UNAVAILABLE', 'overloaded', 'high demand',
+                              'INTERNAL', 'DEADLINE_EXCEEDED', 'Service Unavailable')
+
+
+def _gemini_call_with_fallback(client, candidates: list[str], contents, cfg):
+    """Llama a Gemini probando modelos en orden. 503/overload: reintenta el mismo con backoff."""
+    import time
+    last_err = None
+    for mdl in candidates:
+        for attempt in range(3):  # 3 intentos por modelo en 503/overload
+            try:
+                return mdl, client.models.generate_content(model=mdl, contents=contents, config=cfg)
+            except Exception as e:
+                msg = str(e)
+                last_err = e
+                if any(s in msg for s in _GEMINI_QUOTA_MARKERS):
+                    break  # saltar al siguiente modelo
+                if any(s in msg for s in _GEMINI_TRANSIENT_MARKERS):
+                    time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s
+                    continue
+                raise  # otro error: no enmascarar
+    raise RuntimeError(
+        "Ningún modelo Gemini respondió. Los modelos gratuitos están saturados o "
+        "tu key no tiene cuota. Reintenta en 1-2 minutos o configura Claude. "
+        f"Último error: {last_err}"
+    )
+
+
 def _safe_json_loads(text: str) -> dict:
     """json.loads con fallback a json-repair (tolera salidas truncadas/comas finales)."""
     if not text:
@@ -274,35 +304,15 @@ content_calendar debe tener 10-16 entradas con fechas REALES dentro de la ventan
         max_output_tokens=32000,
     )
 
-    # Orden de modelos a intentar
+    # Orden de modelos a intentar (con retry por modelo en 503/overload)
     candidates = [model] if model else []
     candidates += [m for m in GEMINI_FALLBACK_MODELS if m not in candidates]
-
-    last_err = None
-    for mdl in candidates:
-        try:
-            resp = client.models.generate_content(
-                model=mdl,
-                contents=[types.Content(role="user", parts=parts)],
-                config=cfg,
-            )
-            data = _safe_json_loads(resp.text)
-            data["_provider"] = "gemini"
-            data["_model"] = mdl
-            return data
-        except Exception as e:
-            msg = str(e)
-            last_err = e
-            # Si es cuota agotada (limit 0) o modelo no encontrado, probar el siguiente
-            if any(s in msg for s in ("RESOURCE_EXHAUSTED", "429", "NOT_FOUND", "404", "limit: 0", "not found")):
-                continue
-            raise
-    # Si todos fallan
-    raise RuntimeError(
-        "Ningún modelo gratuito de Gemini tiene cuota disponible para tu key. "
-        "Esto suele pasar si el free tier no está habilitado en tu región/proyecto. "
-        f"Último error: {last_err}"
-    )
+    contents = [types.Content(role="user", parts=parts)]
+    mdl, resp = _gemini_call_with_fallback(client, candidates, contents, cfg)
+    data = _safe_json_loads(resp.text)
+    data["_provider"] = "gemini"
+    data["_model"] = mdl
+    return data
 
 
 def generate_ideas(provider: str, api_key: str, account: dict, top_posts, bottom_posts,
@@ -517,26 +527,12 @@ first_14_days debe tener 14 entradas en orden cronológico (días 1 a 14)."""))
 
     candidates = [model] if model else []
     candidates += [m for m in GEMINI_FALLBACK_MODELS if m not in candidates]
-
-    last_err = None
-    for mdl in candidates:
-        try:
-            resp = client.models.generate_content(
-                model=mdl,
-                contents=[types.Content(role="user", parts=parts)],
-                config=cfg,
-            )
-            data = _safe_json_loads(resp.text)
-            data["_provider"] = "gemini"
-            data["_model"] = mdl
-            return data
-        except Exception as e:
-            msg = str(e)
-            last_err = e
-            if any(s in msg for s in ("RESOURCE_EXHAUSTED", "429", "NOT_FOUND", "404", "limit: 0", "not found")):
-                continue
-            raise
-    raise RuntimeError(f"Ningún modelo Gemini gratuito tiene cuota. Último error: {last_err}")
+    contents = [types.Content(role="user", parts=parts)]
+    mdl, resp = _gemini_call_with_fallback(client, candidates, contents, cfg)
+    data = _safe_json_loads(resp.text)
+    data["_provider"] = "gemini"
+    data["_model"] = mdl
+    return data
 
 
 def generate_recovery_plan(provider: str, api_key: str, account: dict, top_posts, bottom_posts,
