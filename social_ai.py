@@ -9,6 +9,22 @@ import json
 import requests
 import anthropic
 
+
+def _safe_json_loads(text: str) -> dict:
+    """json.loads con fallback a json-repair (tolera salidas truncadas/comas finales)."""
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            from json_repair import repair_json
+            return json.loads(repair_json(text))
+        except Exception:
+            # Último recurso: repair_json con return_objects
+            from json_repair import repair_json
+            return repair_json(text, return_objects=True) or {}
+
 MODEL = "claude-opus-4-7"
 
 SYSTEM_PROMPT = """Eres un estratega senior de redes sociales y dirección creativa. \
@@ -159,8 +175,9 @@ def _collect_posts(top_posts, bottom_posts, max_images):
 _FINAL_INSTRUCTION = (
     "Analiza el contenido visual y los datos. Devuelve el JSON con: content_review, "
     "visual_observations, whats_working, whats_not_working, ideas (5-7 ideas concretas), "
-    "y content_calendar (parrilla de 30 días con 10-16 posts ya programados en fechas "
-    "y horas reales basadas en los mejores días/horas que detectes en los datos)."
+    "y content_calendar (parrilla de 30 días con 8-12 posts ya programados en fechas "
+    "y horas reales basadas en los mejores días/horas que detectes en los datos). "
+    "Mantén los campos concisos pero accionables."
 )
 
 
@@ -179,14 +196,14 @@ def generate_ideas_claude(api_key: str, account: dict, top_posts, bottom_posts,
 
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=12000,
+        max_tokens=20000,
         thinking={"type": "adaptive"},
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content}],
         output_config={"format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
     )
     text = next((b.text for b in resp.content if b.type == "text"), "{}")
-    data = json.loads(text)
+    data = _safe_json_loads(text)
     data["_provider"] = "claude"
     return data
 
@@ -254,7 +271,7 @@ content_calendar debe tener 10-16 entradas con fechas REALES dentro de la ventan
     cfg = types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
         response_mime_type="application/json",
-        max_output_tokens=8000,
+        max_output_tokens=32000,
     )
 
     # Orden de modelos a intentar
@@ -269,7 +286,7 @@ content_calendar debe tener 10-16 entradas con fechas REALES dentro de la ventan
                 contents=[types.Content(role="user", parts=parts)],
                 config=cfg,
             )
-            data = json.loads(resp.text)
+            data = _safe_json_loads(resp.text)
             data["_provider"] = "gemini"
             data["_model"] = mdl
             return data
@@ -458,7 +475,7 @@ def generate_recovery_claude(api_key: str, account: dict, top_posts, bottom_post
         output_config={"format": {"type": "json_schema", "schema": RECOVERY_SCHEMA}},
     )
     text = next((b.text for b in resp.content if b.type == "text"), "{}")
-    data = json.loads(text)
+    data = _safe_json_loads(text)
     data["_provider"] = "claude"
     return data
 
@@ -495,7 +512,7 @@ first_14_days debe tener 14 entradas en orden cronológico (días 1 a 14)."""))
     cfg = types.GenerateContentConfig(
         system_instruction=RECOVERY_SYSTEM,
         response_mime_type="application/json",
-        max_output_tokens=14000,
+        max_output_tokens=32000,
     )
 
     candidates = [model] if model else []
@@ -509,7 +526,7 @@ first_14_days debe tener 14 entradas en orden cronológico (días 1 a 14)."""))
                 contents=[types.Content(role="user", parts=parts)],
                 config=cfg,
             )
-            data = json.loads(resp.text)
+            data = _safe_json_loads(resp.text)
             data["_provider"] = "gemini"
             data["_model"] = mdl
             return data
