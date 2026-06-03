@@ -9,7 +9,26 @@ import pandas as pd
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = 'serp-tracker-secret-2026'
+
+# ── Seguridad: secret_key persistido + cookie hardening ──
+_CONFIG_DIR_BOOT = os.path.join(os.path.dirname(__file__), 'config')
+os.makedirs(_CONFIG_DIR_BOOT, exist_ok=True)
+_SECRET_PATH = os.path.join(_CONFIG_DIR_BOOT, 'flask_secret.key')
+if os.path.exists(_SECRET_PATH):
+    with open(_SECRET_PATH, 'rb') as _f:
+        app.secret_key = _f.read()
+else:
+    import secrets as _secrets_boot
+    app.secret_key = _secrets_boot.token_bytes(48)
+    with open(_SECRET_PATH, 'wb') as _f:
+        _f.write(app.secret_key)
+
+app.config.update(
+    SESSION_COOKIE_SAMESITE='Strict',   # bloquea cross-site → mitiga CSRF
+    SESSION_COOKIE_HTTPONLY=True,        # JS no puede leer la cookie
+    # SESSION_COOKIE_SECURE=True solo cuando uses HTTPS
+)
+
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 DB_PATH       = os.path.join(os.path.dirname(__file__), 'rankings.db')
 CONFIG_DIR    = os.path.join(os.path.dirname(__file__), 'config')
@@ -80,6 +99,49 @@ def fmt_date_range(d1: str, d2: str) -> str:
         return f'{a.day} {ma} - {b.day} {month} {b.year}'
     except Exception:
         return f'{d1} – {d2}'
+
+# ── Seguridad: helpers ──────────────────────────────────────────────────────
+
+def _is_localhost_request():
+    """True si la request viene de localhost (para permitir OAuth sobre HTTP en dev)."""
+    host = (request.host or '').split(':')[0]
+    return host in ('localhost', '127.0.0.1', '::1', '[::1]')
+
+
+def _enable_insecure_oauth_if_local():
+    """Activa OAUTHLIB_INSECURE_TRANSPORT solo si la request es localhost."""
+    if _is_localhost_request():
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    else:
+        os.environ.pop('OAUTHLIB_INSECURE_TRANSPORT', None)
+
+
+# Endpoints donde NO aplicar CSRF Origin/Referer check (callbacks GET externos no aplican,
+# pero por si acaso, y endpoints públicos GET). Solo necesario para POST.
+_CSRF_EXEMPT = set()  # vacío por ahora
+
+
+@app.before_request
+def _csrf_origin_guard():
+    """Protección CSRF para POST/PUT/DELETE/PATCH: verifica Origin o Referer."""
+    if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        return
+    if request.endpoint in _CSRF_EXEMPT:
+        return
+    host = request.host
+    expected = (f'http://{host}', f'https://{host}')
+    origin = request.headers.get('Origin', '')
+    referer = request.headers.get('Referer', '')
+    if origin:
+        if not origin.startswith(expected):
+            return ('CSRF: Origin no coincide con el host', 403)
+    elif referer:
+        if not referer.startswith(expected):
+            return ('CSRF: Referer no coincide con el host', 403)
+    else:
+        # Sin Origin ni Referer: rechazar (SameSite=Strict ya bloqueó la cookie igualmente)
+        return ('CSRF: falta Origin/Referer', 403)
+
 
 def gsc_is_authenticated():
     if not os.path.exists(GSC_TOKEN_PATH):
@@ -1129,7 +1191,7 @@ def gsc_callback():
 
     try:
         from google_auth_oauthlib.flow import Flow
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # localhost only
+        _enable_insecure_oauth_if_local()
         flow = Flow.from_client_secrets_file(
             GSC_CREDS_PATH,
             scopes=GSC_SCOPES,
@@ -1192,7 +1254,7 @@ def ga4_auth():
         return redirect(url_for('integrations'))
     try:
         from google_auth_oauthlib.flow import Flow
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # localhost only
+        _enable_insecure_oauth_if_local()
         flow = Flow.from_client_secrets_file(
             GSC_CREDS_PATH,
             scopes=GA4_SCOPES,
@@ -1216,7 +1278,7 @@ def ga4_callback():
         return redirect(url_for('integrations'))
     try:
         from google_auth_oauthlib.flow import Flow
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+        _enable_insecure_oauth_if_local()
         flow = Flow.from_client_secrets_file(
             GSC_CREDS_PATH,
             scopes=GA4_SCOPES,
@@ -2144,9 +2206,24 @@ def ig_load_token():
         return None
 
 
+def _ig_token_expired(tok):
+    """True si expires_at < ahora. Si no hay expires_at, asume válido (fallará en runtime)."""
+    exp = (tok or {}).get('expires_at')
+    if not exp:
+        return False
+    try:
+        return datetime.fromisoformat(exp) < datetime.utcnow()
+    except Exception:
+        return False
+
+
 def ig_is_authenticated():
     t = ig_load_token()
-    return bool(t and t.get('access_token') and t.get('ig_id'))
+    if not (t and t.get('access_token') and t.get('ig_id')):
+        return False
+    if _ig_token_expired(t):
+        return False
+    return True
 
 
 @app.route('/social/save-fb-app', methods=['POST'])
@@ -2195,9 +2272,13 @@ def social_ig_callback():
             return redirect(url_for('integrations'))
         # Usar la primera cuenta por defecto
         primary = accounts[0]
+        # Calcular expires_at con buffer de 1 día (long-lived FB token = ~60 días)
+        expires_in_s = int(tok.get('expires_in') or 60 * 24 * 3600)
+        expires_at = (datetime.utcnow() + timedelta(seconds=max(0, expires_in_s - 86400))).isoformat()
         token_data = {
             'access_token': tok['access_token'],
             'expires_in': tok.get('expires_in'),
+            'expires_at': expires_at,
             'ig_id': primary['ig_id'],
             'username': primary['username'],
             'available_accounts': accounts,
@@ -2207,7 +2288,9 @@ def social_ig_callback():
             json.dump(token_data, f, indent=2, ensure_ascii=False)
         flash(f'✓ Instagram conectado: @{primary["username"]}', 'success')
     except Exception as e:
-        flash(f'Erro ao conectar Instagram: {e}', 'danger')
+        # No exponer detalles internos al cliente
+        flash('Erro ao conectar Instagram. Verifica las credenciales y el redirect URI.', 'danger')
+        app.logger.warning(f'IG callback error: {e}')
     return redirect(url_for('social_index'))
 
 
